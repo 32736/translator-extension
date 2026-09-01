@@ -1,0 +1,23 @@
+{
+  "name": "translator-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "typecheck": "vue-tsc --noEmit",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "vue": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.300",
+    "@wxt-dev/module-vue": "^1.0.0",
+    "typescript": "^5.8.0",
+    "vue-tsc": "^2.2.0",
+    "wxt": "^0.20.0"
+  }
+}
