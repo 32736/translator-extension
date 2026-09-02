@@ -109,14 +109,12 @@ No. All extension logic is bundled in the submitted package. The extension does 
 
 ## Graphic assets
 
-`docs/store-assets/` 中的宣传插画可以作为商店宣传视觉基础，但不能替代真实功能截图。上传前应使用当前版本在 Chrome 中运行的真实界面截图，至少准备一张 1280×800 截图；另准备商店图标和宣传图。
+`docs/store-assets/` 中已准备基于当前页面结构和生产构建 CSS 渲染的功能界面截图。截图中的示例文本仅用于展示界面，不代表真实用户数据。
 
 当前已准备：
 
-- `translator-marquee.png`：1400×560，宣传横幅视觉稿
-- `translator-promo-tile.png`：440×280，小宣传图视觉稿
-- `translator-marquee-source.png`：横幅源图，可继续编辑
-- `translator-promo-tile-source.png`：小宣传图源图，可继续编辑
+- `translator-screenshot-zh.png`：中文界面、深色主题，1280×800
+- `translator-screenshot-en.png`：英文界面、浅色主题，1280×800
 
 ## Test instructions
 

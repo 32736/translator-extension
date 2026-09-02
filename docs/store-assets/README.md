@@ -1,14 +1,10 @@
 # Chrome Web Store 素材
 
-这些图片用于 Chrome Web Store 的宣传视觉，不是扩展运行截图。
-
-上传商店前，请在 Chrome 中打开当前版本扩展并截取真实界面，至少准备一张 1280×800 的功能截图。宣传图中的插画只用于补充品牌视觉，不能替代真实产品截图。
+这些图片基于当前扩展的页面结构和生产构建 CSS 渲染，内容、语言切换、语言选择、翻译面板、结果操作以及 Recent/Favorites 区域均与当前页面实现保持一致。
 
 ## 文件
 
-- `translator-marquee.png`：1400×560 横幅视觉稿
-- `translator-promo-tile.png`：440×280 小宣传图视觉稿
-- `translator-marquee-source.png`：横幅源图
-- `translator-promo-tile-source.png`：小宣传图源图
+- `translator-screenshot-zh.png`：中文界面、深色主题，1280×800
+- `translator-screenshot-en.png`：英文界面、浅色主题，1280×800
 
-生成方式：使用 imagegen 生成无文字插画，再使用 ffmpeg 按 Chrome Web Store 尺寸裁切；没有修改扩展运行时图标。
+截图中的文本和历史记录是用于展示当前界面状态的示例内容，不代表真实用户数据。
