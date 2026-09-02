@@ -29,6 +29,12 @@
 
 完整范围与后续边界见：[技术实施文档](D:/Codes/FQG/translator-extension/docs/translator-extension-v0.1.md)。
 
+## 发布资料
+
+- [Chrome Web Store 公开发布资料](docs/chrome-web-store-release.md)
+- [隐私政策](docs/privacy-policy.md)
+- [Chrome Web Store 素材说明](docs/store-assets/README.md)
+
 ## 开发
 
 ```bash
