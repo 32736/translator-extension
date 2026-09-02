@@ -25,6 +25,27 @@ interface BuiltInAiTranslatorConstructor {
   ): Promise<BuiltInAiTranslator>;
 }
 
+interface BuiltInAiLanguageDetectorResult {
+  detectedLanguage: string;
+  confidence: number;
+}
+
+interface BuiltInAiLanguageDetector {
+  detect(text: string): Promise<BuiltInAiLanguageDetectorResult[]>;
+  destroy?(): void;
+}
+
+interface BuiltInAiLanguageDetectorCreateOptions {
+  monitor?: (monitor: BuiltInAiCreateMonitor) => void;
+}
+
+interface BuiltInAiLanguageDetectorConstructor {
+  create(
+    options?: BuiltInAiLanguageDetectorCreateOptions,
+  ): Promise<BuiltInAiLanguageDetector>;
+}
+
 interface BuiltInAiGlobal {
   Translator?: BuiltInAiTranslatorConstructor;
+  LanguageDetector?: BuiltInAiLanguageDetectorConstructor;
 }

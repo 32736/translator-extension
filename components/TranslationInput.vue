@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import type { SourceLanguage } from '../core/translator/types';
+import { languageInputLabel } from '../core/translator/languages';
+
 defineProps<{
   modelValue: string;
   disabled: boolean;
+  sourceLanguage: SourceLanguage | 'auto';
 }>();
 
 const emit = defineEmits<{
@@ -17,12 +21,20 @@ function handleKeydown(event: KeyboardEvent): void {
     emit('translate');
   }
 }
+
+function inputLabel(sourceLanguage: SourceLanguage | 'auto'): string {
+  if (sourceLanguage === 'auto') {
+    return '输入内容';
+  }
+
+  return languageInputLabel(sourceLanguage);
+}
 </script>
 
 <template>
   <section class="input-card" aria-labelledby="input-title">
     <div class="section-label-row">
-      <label id="input-title" for="translation-input">输入英文</label>
+      <label id="input-title" for="translation-input">{{ inputLabel(sourceLanguage) }}</label>
       <button
         v-if="modelValue"
         class="text-button"

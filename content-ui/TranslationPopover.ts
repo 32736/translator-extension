@@ -1,5 +1,11 @@
 import type { SelectionDetails } from './SelectionTrigger';
+import { ChromeLanguageDetector } from '../core/language/language-detector';
+import {
+  getDefaultTargetLanguage,
+  languageSpeechLocale,
+} from '../core/translator/languages';
 import type { TranslationRequest } from '../core/translator/translation-types';
+import type { SourceLanguage, TargetLanguage } from '../core/translator/types';
 import {
   normalizeText,
   TranslationServiceError,
@@ -26,7 +32,9 @@ export class TranslationPopoverController {
   private readonly closeButton: HTMLButtonElement;
   private readonly openButton: HTMLButtonElement;
   private readonly service: TranslatorService;
+  private readonly languageDetector: ChromeLanguageDetector;
   private readonly onOpenTranslator: (text: string) => void;
+  private sourceLanguage: SourceLanguage = 'en';
   private currentAbortController: AbortController | null = null;
   private requestSequence = 0;
 
@@ -34,8 +42,10 @@ export class TranslationPopoverController {
     shadow: ShadowRoot,
     service: TranslatorService,
     onOpenTranslator: (text: string) => void,
+    languageDetector = new ChromeLanguageDetector(),
   ) {
     this.service = service;
+    this.languageDetector = languageDetector;
     this.onOpenTranslator = onOpenTranslator;
     this.popover = document.createElement('section');
     this.popover.className = 'popover';
@@ -119,16 +129,35 @@ export class TranslationPopoverController {
     this.currentAbortController = abortController;
     this.setStatus('preparing-model', '正在准备本地翻译模型');
 
-    const request: TranslationRequest = {
-      id: `selection-${requestId}`,
-      text,
-      sourceLanguage: 'en',
-      targetLanguage: 'zh',
-      source: 'selection',
-      createdAt: Date.now(),
-    };
-
     try {
+      const detectedLanguage = await this.languageDetector.detect(text, {
+        onDownloadProgress: (downloadProgress) => {
+          if (requestId === this.requestSequence) {
+            this.setStatus('preparing-model', '正在准备本地语言识别模型');
+            this.progressElement.hidden = false;
+            this.progressValueElement.style.width = `${downloadProgress * 100}%`;
+            this.statusElement.textContent = `正在准备本地语言识别模型 ${Math.round(downloadProgress * 100)}%`;
+          }
+        },
+      });
+
+      if (requestId !== this.requestSequence) {
+        return;
+      }
+
+      const sourceLanguage: SourceLanguage = detectedLanguage ?? 'en';
+      const targetLanguage: TargetLanguage =
+        getDefaultTargetLanguage(sourceLanguage);
+      this.sourceLanguage = sourceLanguage;
+      const request: TranslationRequest = {
+        id: `selection-${requestId}`,
+        text,
+        sourceLanguage,
+        targetLanguage,
+        source: 'selection',
+        createdAt: Date.now(),
+      };
+
       const result = await this.service.translate(request, {
         signal: abortController.signal,
         onDownloadProgress: (downloadProgress) => {
@@ -202,6 +231,7 @@ export class TranslationPopoverController {
     document.removeEventListener('selectionchange', this.hide, true);
     document.removeEventListener('scroll', this.hide, true);
     window.removeEventListener('resize', this.hide);
+    this.languageDetector.destroy();
     this.popover.remove();
   }
 
@@ -235,7 +265,7 @@ export class TranslationPopoverController {
 
     speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'en-US';
+    utterance.lang = languageSpeechLocale(this.sourceLanguage);
     speechSynthesis.speak(utterance);
   };
 

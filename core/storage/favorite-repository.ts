@@ -4,11 +4,14 @@ import {
   STORE_NAMES,
   transactionToPromise,
 } from './db';
+import type { SourceLanguage, TargetLanguage } from '../translator/types';
 
 export interface FavoriteEntity {
   id: string;
   sourceText: string;
   translatedText: string;
+  sourceLanguage?: SourceLanguage;
+  targetLanguage?: TargetLanguage;
   createdAt: number;
 }
 

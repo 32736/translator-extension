@@ -1,4 +1,5 @@
 import type { TranslationSource } from '../translator/translation-types';
+import type { SourceLanguage, TargetLanguage } from '../translator/types';
 import {
   openTranslatorDatabase,
   requestToPromise,
@@ -10,8 +11,8 @@ export interface HistoryEntity {
   id: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage: string;
-  targetLanguage: string;
+  sourceLanguage: SourceLanguage;
+  targetLanguage: TargetLanguage;
   source: TranslationSource;
   createdAt: number;
 }

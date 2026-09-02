@@ -1,12 +1,24 @@
-import type { CacheRepository } from '../storage/cache-repository';
-import { containsMostlyChinese } from '../language/classify';
+import type {
+  CacheRepository,
+  TranslationCacheEntity,
+} from '../storage/cache-repository';
+import { detectLanguageByScript } from '../language/language-detector';
+import {
+  getTranslationPairLabel,
+  isSupportedTranslationPair,
+  languageLabel,
+} from './languages';
 import type { HistoryRepository } from '../storage/history-repository';
-import type { TranslatorProvider } from './provider';
+import {
+  TranslatorProviderError,
+  type TranslatorProvider,
+} from './provider';
 import type {
   TranslationError,
   TranslationRequest,
   TranslationResult,
 } from './translation-types';
+import type { TranslatorAvailability } from './types';
 
 export class TranslationServiceError extends Error {
   readonly details: TranslationError;
@@ -22,8 +34,12 @@ export function normalizeText(input: string): string {
   return input.replace(/\r\n/g, '\n').trim();
 }
 
-async function createCacheKey(text: string): Promise<string> {
-  const keySource = `en|zh|chrome-translator|${text}`;
+async function createCacheKey(
+  text: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+): Promise<string> {
+  const keySource = `${sourceLanguage}|${targetLanguage}|chrome-translator|${text}`;
   const encodedKey = new TextEncoder().encode(keySource);
   const digest = await crypto.subtle.digest('SHA-256', encodedKey);
 
@@ -36,22 +52,59 @@ function toErrorDetails(
   error: unknown,
   signal: AbortSignal | undefined,
 ): TranslationError {
+  const cause =
+    error instanceof TranslatorProviderError ? error.cause : error;
+
   if (
     signal?.aborted === true ||
-    (error instanceof DOMException && error.name === 'AbortError')
+    (cause instanceof DOMException && cause.name === 'AbortError') ||
+    (cause instanceof Error && cause.name === 'AbortError')
   ) {
     return {
       code: 'ABORTED',
       message: '翻译已取消。',
-      cause: error,
+      cause,
     };
   }
 
   return {
     code: 'TRANSLATION_FAILED',
     message: '翻译失败，请重试。',
-    cause: error,
+    cause,
   };
+}
+
+async function getCacheSafely(
+  repository: CacheRepository,
+  id: string,
+): Promise<TranslationCacheEntity | null> {
+  try {
+    return await repository.get(id);
+  } catch {
+    return null;
+  }
+}
+
+async function putCacheSafely(
+  repository: CacheRepository,
+  entity: TranslationCacheEntity,
+): Promise<void> {
+  try {
+    await repository.put(entity);
+  } catch {
+    // A storage failure should not discard an otherwise valid translation.
+  }
+}
+
+async function saveHistorySafely(
+  repository: HistoryRepository | undefined,
+  entity: Parameters<HistoryRepository['save']>[0],
+): Promise<void> {
+  try {
+    await repository?.save(entity);
+  } catch {
+    // A storage failure should not discard an otherwise valid translation.
+  }
 }
 
 export class TranslatorService {
@@ -74,14 +127,38 @@ export class TranslatorService {
     if (!normalizedText) {
       throw new TranslationServiceError({
         code: 'INVALID_INPUT',
-        message: '请输入要翻译的英文。',
+        message: '请输入要翻译的内容。',
       });
     }
 
-    if (containsMostlyChinese(normalizedText)) {
+    if (request.sourceLanguage === request.targetLanguage) {
       throw new TranslationServiceError({
         code: 'INVALID_INPUT',
-        message: 'V0.1 当前仅支持英文 → 简体中文。',
+        message: '源语言和目标语言不能相同。',
+      });
+    }
+
+    if (
+      !isSupportedTranslationPair(
+        request.sourceLanguage,
+        request.targetLanguage,
+      )
+    ) {
+      throw new TranslationServiceError({
+        code: 'PAIR_UNAVAILABLE',
+        message: `当前版本暂不支持${getTranslationPairLabel(request.sourceLanguage, request.targetLanguage)}。`,
+      });
+    }
+
+    const detectedLanguage = detectLanguageByScript(normalizedText);
+
+    if (
+      detectedLanguage !== null &&
+      detectedLanguage !== request.sourceLanguage
+    ) {
+      throw new TranslationServiceError({
+        code: 'INVALID_INPUT',
+        message: `当前方向为 ${getTranslationPairLabel(request.sourceLanguage, request.targetLanguage)}，请输入${languageLabel(request.sourceLanguage)}内容。`,
       });
     }
 
@@ -93,11 +170,15 @@ export class TranslatorService {
     }
 
     const startedAt = performance.now();
-    const cacheId = await createCacheKey(normalizedText);
-    const cachedEntity = await this.cacheRepository.get(cacheId);
+    const cacheId = await createCacheKey(
+      normalizedText,
+      request.sourceLanguage,
+      request.targetLanguage,
+    );
+    const cachedEntity = await getCacheSafely(this.cacheRepository, cacheId);
 
     if (cachedEntity !== null) {
-      await this.historyRepository?.save({
+      await saveHistorySafely(this.historyRepository, {
         id: request.id,
         sourceText: cachedEntity.sourceText,
         translatedText: cachedEntity.translatedText,
@@ -113,14 +194,13 @@ export class TranslatorService {
         translatedText: cachedEntity.translatedText,
         sourceLanguage: request.sourceLanguage,
         targetLanguage: request.targetLanguage,
-        provider: 'chrome-translator',
         cached: true,
         durationMs: Math.round(performance.now() - startedAt),
         createdAt: Date.now(),
       };
     }
 
-    let availability: string | null = null;
+    let availability: TranslatorAvailability | null = null;
 
     try {
       availability = await this.provider.availability(
@@ -138,32 +218,30 @@ export class TranslatorService {
       if (availability === 'unavailable') {
         throw new TranslationServiceError({
           code: 'PAIR_UNAVAILABLE',
-          message: '当前设备无法使用英文 → 简体中文本地翻译模型。',
+          message: `当前设备无法使用${getTranslationPairLabel(request.sourceLanguage, request.targetLanguage)}本地翻译模型。`,
         });
       }
-
-      options?.onTranslating?.();
 
       const translatedText = await this.provider.translate(normalizedText, {
         sourceLanguage: request.sourceLanguage,
         targetLanguage: request.targetLanguage,
         signal: options?.signal,
         onDownloadProgress: options?.onDownloadProgress,
+        onTranslating: options?.onTranslating,
       });
 
-      await this.cacheRepository.put({
+      await putCacheSafely(this.cacheRepository, {
         id: cacheId,
         sourceText: normalizedText,
         translatedText,
         sourceLanguage: request.sourceLanguage,
         targetLanguage: request.targetLanguage,
-        provider: this.provider.id,
         createdAt: Date.now(),
         lastUsedAt: Date.now(),
         hitCount: 0,
       });
 
-      await this.historyRepository?.save({
+      await saveHistorySafely(this.historyRepository, {
         id: request.id,
         sourceText: normalizedText,
         translatedText,
@@ -179,7 +257,6 @@ export class TranslatorService {
         translatedText,
         sourceLanguage: request.sourceLanguage,
         targetLanguage: request.targetLanguage,
-        provider: 'chrome-translator',
         cached: false,
         durationMs: Math.round(performance.now() - startedAt),
         createdAt: Date.now(),
@@ -193,6 +270,8 @@ export class TranslatorService {
 
       if (
         details.code === 'TRANSLATION_FAILED' &&
+        error instanceof TranslatorProviderError &&
+        error.phase === 'prepare' &&
         (availability === 'downloadable' || availability === 'downloading')
       ) {
         throw new TranslationServiceError({

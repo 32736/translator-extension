@@ -1,7 +1,24 @@
-import type { TranslateOptions, TranslatorProvider } from './provider';
+import {
+  TranslatorProviderError,
+  type TranslateOptions,
+  type TranslatorProvider,
+} from './provider';
 import type { TranslatorAvailability } from './types';
 
 const PROVIDER_ID = 'chrome-translator';
+
+function normalizeAvailability(value: string): TranslatorAvailability {
+  switch (value) {
+    case 'unsupported':
+    case 'unavailable':
+    case 'downloadable':
+    case 'downloading':
+    case 'available':
+      return value;
+    default:
+      return 'unknown';
+  }
+}
 
 function getTranslatorApi(): BuiltInAiTranslatorConstructor | undefined {
   if (!('Translator' in globalThis)) {
@@ -31,22 +48,36 @@ export class ChromeTranslatorProvider implements TranslatorProvider {
       return 'unsupported';
     }
 
-    return translatorApi.availability({
+    const availability = await translatorApi.availability({
       sourceLanguage,
       targetLanguage,
     });
+
+    return normalizeAvailability(availability);
   }
 
   async translate(text: string, options: TranslateOptions): Promise<string> {
-    const translator = await this.getOrCreateTranslator(options);
+    let translator: BuiltInAiTranslator;
 
-    if (options.signal === undefined) {
-      return translator.translate(text);
+    try {
+      translator = await this.getOrCreateTranslator(options);
+    } catch (error: unknown) {
+      throw new TranslatorProviderError('prepare', error);
     }
 
-    return translator.translate(text, {
-      signal: options.signal,
-    });
+    options.onTranslating?.();
+
+    try {
+      if (options.signal === undefined) {
+        return await translator.translate(text);
+      }
+
+      return await translator.translate(text, {
+        signal: options.signal,
+      });
+    } catch (error: unknown) {
+      throw new TranslatorProviderError('translate', error);
+    }
   }
 
   destroy(): void {
@@ -90,6 +121,9 @@ export class ChromeTranslatorProvider implements TranslatorProvider {
     };
 
     options.signal?.addEventListener('abort', abortCreation, { once: true });
+    if (options.signal?.aborted === true) {
+      creationController.abort();
+    }
 
     const pendingTranslator = translatorApi.create({
       sourceLanguage: options.sourceLanguage,
@@ -98,7 +132,12 @@ export class ChromeTranslatorProvider implements TranslatorProvider {
       monitor: (monitor) => {
         monitor.addEventListener('downloadprogress', (event: Event) => {
           const progressEvent = event as ProgressEvent;
-          options.onDownloadProgress?.(clampProgress(progressEvent.loaded));
+          if (
+            typeof progressEvent.loaded === 'number' &&
+            Number.isFinite(progressEvent.loaded)
+          ) {
+            options.onDownloadProgress?.(clampProgress(progressEvent.loaded));
+          }
         });
       },
     });

@@ -2,7 +2,11 @@ import {
   SelectionTriggerController,
 } from '../content-ui/SelectionTrigger';
 import { TranslationPopoverController } from '../content-ui/TranslationPopover';
-import { InMemoryCacheRepository } from '../core/storage/cache-repository';
+import { ChromeLanguageDetector } from '../core/language/language-detector';
+import {
+  ExtensionCacheRepository,
+  ExtensionHistoryRepository,
+} from '../core/storage/extension-repository';
 import { ChromeTranslatorProvider } from '../core/translator/chrome-translator-provider';
 import type { RuntimeMessage } from '../core/messaging/messages';
 import {
@@ -17,6 +21,7 @@ export default defineContentScript({
   runAt: 'document_idle',
   async main() {
     let provider: ChromeTranslatorProvider | null = null;
+    let languageDetector: ChromeLanguageDetector | null = null;
     let controller: SelectionTriggerController | null = null;
     let popover: TranslationPopoverController | null = null;
 
@@ -26,7 +31,12 @@ export default defineContentScript({
       }
 
       provider = new ChromeTranslatorProvider();
-      const service = new TranslatorService(provider, new InMemoryCacheRepository());
+      languageDetector = new ChromeLanguageDetector();
+      const service = new TranslatorService(
+        provider,
+        new ExtensionCacheRepository(),
+        new ExtensionHistoryRepository(),
+      );
       controller = new SelectionTriggerController((selection) => {
         controller?.hide();
         void popover?.open(selection);
@@ -41,6 +51,7 @@ export default defineContentScript({
           };
           void chrome.runtime.sendMessage(message);
         },
+        languageDetector,
       );
       controller.mount();
     };
@@ -49,9 +60,11 @@ export default defineContentScript({
       popover?.destroy();
       controller?.destroy();
       provider?.destroy();
+      languageDetector?.destroy();
       popover = null;
       controller = null;
       provider = null;
+      languageDetector = null;
     };
 
     const settings = await loadSettings();

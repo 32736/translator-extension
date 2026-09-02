@@ -8,6 +8,7 @@ export interface PendingTranslation {
 }
 
 const PENDING_TRANSLATION_KEY = 'pendingTranslation';
+const MAX_PENDING_TRANSLATION_AGE_MS = 10 * 60 * 1000;
 
 function isPendingTranslation(value: unknown): value is PendingTranslation {
   if (typeof value !== 'object' || value === null) {
@@ -27,9 +28,15 @@ export async function queueTranslationRequest(
   text: string,
   source: PendingTranslation['source'],
 ): Promise<PendingTranslation> {
+  const normalizedText = text.trim();
+
+  if (!normalizedText) {
+    throw new Error('Cannot queue an empty translation request');
+  }
+
   const pending: PendingTranslation = {
     id: crypto.randomUUID(),
-    text,
+    text: normalizedText,
     source,
     createdAt: Date.now(),
   };
@@ -44,7 +51,16 @@ export async function getPendingTranslation(): Promise<PendingTranslation | null
   const stored = await chrome.storage.session.get(PENDING_TRANSLATION_KEY);
   const value: unknown = stored[PENDING_TRANSLATION_KEY];
 
-  return isPendingTranslation(value) ? value : null;
+  if (!isPendingTranslation(value)) {
+    return null;
+  }
+
+  if (Date.now() - value.createdAt > MAX_PENDING_TRANSLATION_AGE_MS) {
+    await chrome.storage.session.remove(PENDING_TRANSLATION_KEY);
+    return null;
+  }
+
+  return value;
 }
 
 export async function removePendingTranslation(id: string): Promise<void> {

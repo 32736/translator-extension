@@ -4,14 +4,14 @@ import {
   STORE_NAMES,
   transactionToPromise,
 } from './db';
+import type { SourceLanguage, TargetLanguage } from '../translator/types';
 
 export interface TranslationCacheEntity {
   id: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  provider: string;
+  sourceLanguage: SourceLanguage;
+  targetLanguage: TargetLanguage;
   createdAt: number;
   lastUsedAt: number;
   hitCount: number;

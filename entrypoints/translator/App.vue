@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import FavoriteList from '../../components/FavoriteList.vue';
 import HistoryList from '../../components/HistoryList.vue';
 import TranslationInput from '../../components/TranslationInput.vue';
@@ -23,13 +23,29 @@ import {
   SETTINGS_KEY,
   type Settings,
 } from '../../core/storage/settings';
-import { ChromeTranslatorProvider } from '../../core/translator/chrome-translator-provider';
 import { classifyText } from '../../core/language/classify';
+import {
+  ChromeLanguageDetector,
+} from '../../core/language/language-detector';
+import {
+  getDefaultTargetLanguage,
+  getTargetLanguages,
+  isSupportedLanguage,
+  isSupportedTranslationPair,
+  languageLabel,
+  languageSpeechLocale,
+  SUPPORTED_LANGUAGES,
+} from '../../core/translator/languages';
+import { ChromeTranslatorProvider } from '../../core/translator/chrome-translator-provider';
 import type { TextKind } from '../../core/language/types';
 import type {
   TranslationRequest,
   TranslationSource,
 } from '../../core/translator/translation-types';
+import type {
+  SourceLanguage,
+  TargetLanguage,
+} from '../../core/translator/types';
 import {
   normalizeText,
   TranslationServiceError,
@@ -55,6 +71,15 @@ const textKind = ref<TextKind | null>(null);
 const activeSavedTab = ref<'history' | 'favorites'>('history');
 const historyItems = ref<HistoryEntity[]>([]);
 const favoriteItems = ref<FavoriteEntity[]>([]);
+const sourceLanguage = ref<SourceLanguage | 'auto'>('en');
+const targetLanguage = ref<TargetLanguage>('zh');
+const detectedLanguage = ref<SourceLanguage | null>(null);
+const supportedLanguages = SUPPORTED_LANGUAGES;
+const availableTargetLanguages = computed<readonly TargetLanguage[]>(() =>
+  sourceLanguage.value === 'auto'
+    ? []
+    : getTargetLanguages(sourceLanguage.value),
+);
 const settings = ref<Settings>({
   theme: 'system',
   selectionEnabled: true,
@@ -64,7 +89,12 @@ const provider = new ChromeTranslatorProvider();
 const cacheRepository = new IndexedDbCacheRepository();
 const historyRepository = new IndexedDbHistoryRepository();
 const favoriteRepository = new IndexedDbFavoriteRepository();
-const service = new TranslatorService(provider, cacheRepository, historyRepository);
+const languageDetector = new ChromeLanguageDetector();
+const service = new TranslatorService(
+  provider,
+  cacheRepository,
+  historyRepository,
+);
 let currentAbortController: AbortController | null = null;
 let requestSequence = 0;
 
@@ -82,6 +112,67 @@ function textKindLabel(kind: TextKind | null): string {
   }
 
   return kind === 'sentence' ? '句子' : '';
+}
+
+function clearTranslationState(): void {
+  currentAbortController?.abort();
+  currentAbortController = null;
+  requestSequence += 1;
+  sourceText.value = '';
+  translatedText.value = '';
+  status.value = 'idle';
+  errorMessage.value = '';
+  progress.value = 0;
+  favorited.value = false;
+  textKind.value = null;
+}
+
+function setSourceLanguage(value: string): void {
+  if (value === 'auto') {
+    sourceLanguage.value = 'auto';
+    detectedLanguage.value = null;
+    clearTranslationState();
+    return;
+  }
+
+  if (!isSupportedLanguage(value)) {
+    return;
+  }
+
+  sourceLanguage.value = value;
+  targetLanguage.value = getDefaultTargetLanguage(value);
+  detectedLanguage.value = null;
+  clearTranslationState();
+}
+
+function setTargetLanguage(value: string): void {
+  if (
+    !isSupportedLanguage(value) ||
+    sourceLanguage.value === 'auto' ||
+    !isSupportedTranslationPair(sourceLanguage.value, value)
+  ) {
+    return;
+  }
+
+  targetLanguage.value = value;
+  detectedLanguage.value = null;
+  clearTranslationState();
+}
+
+function swapLanguages(): void {
+  if (sourceLanguage.value === 'auto') {
+    return;
+  }
+
+  const previousSource = sourceLanguage.value;
+  if (!isSupportedTranslationPair(targetLanguage.value, previousSource)) {
+    return;
+  }
+
+  sourceLanguage.value = targetLanguage.value;
+  targetLanguage.value = previousSource;
+  detectedLanguage.value = null;
+  clearTranslationState();
 }
 
 function applyTheme(theme: Settings['theme']): void {
@@ -154,17 +245,51 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
   textKind.value = classifyText(text);
   status.value = 'preparing-model';
   progress.value = 0;
-
-  const request: TranslationRequest = {
-    id: requestId,
-    text,
-    sourceLanguage: 'en',
-    targetLanguage: 'zh',
-    source,
-    createdAt: Date.now(),
-  };
+  if (sourceLanguage.value === 'auto') {
+    detectedLanguage.value = null;
+  }
 
   try {
+    let resolvedSourceLanguage: SourceLanguage;
+    let resolvedTargetLanguage: TargetLanguage;
+
+    if (sourceLanguage.value === 'auto') {
+      const detected = await languageDetector.detect(text, {
+        onDownloadProgress: (downloadProgress) => {
+          if (isCurrentRequest(requestId)) {
+            status.value = 'preparing-model';
+            progress.value = downloadProgress;
+          }
+        },
+      });
+
+      if (!isCurrentRequest(requestId)) {
+        return;
+      }
+
+      if (detected === null) {
+        status.value = 'error';
+        errorMessage.value = '无法识别输入语言，请手动选择源语言。';
+        return;
+      }
+
+      detectedLanguage.value = detected;
+      resolvedSourceLanguage = detected;
+      resolvedTargetLanguage = getDefaultTargetLanguage(detected);
+    } else {
+      resolvedSourceLanguage = sourceLanguage.value;
+      resolvedTargetLanguage = targetLanguage.value;
+    }
+
+    const request: TranslationRequest = {
+      id: requestId,
+      text,
+      sourceLanguage: resolvedSourceLanguage,
+      targetLanguage: resolvedTargetLanguage,
+      source,
+      createdAt: Date.now(),
+    };
+
     const result = await service.translate(request, {
       signal: abortController.signal,
       onDownloadProgress: (downloadProgress) => {
@@ -225,6 +350,7 @@ function clearInput(): void {
   progress.value = 0;
   favorited.value = false;
   textKind.value = null;
+  detectedLanguage.value = null;
 }
 
 function cancelTranslation(): void {
@@ -240,10 +366,27 @@ async function toggleFavorite(): Promise<void> {
   const existing = await favoriteRepository.get(id);
 
   if (existing === null) {
+    const favoriteSourceLanguage =
+      sourceLanguage.value === 'auto'
+        ? detectedLanguage.value
+        : sourceLanguage.value;
+    const favoriteTargetLanguage =
+      sourceLanguage.value === 'auto'
+        ? detectedLanguage.value === null
+          ? null
+          : getDefaultTargetLanguage(detectedLanguage.value)
+        : targetLanguage.value;
+
     await favoriteRepository.save({
       id,
       sourceText: sourceText.value,
       translatedText: translatedText.value,
+      ...(favoriteSourceLanguage !== null && favoriteTargetLanguage !== null
+        ? {
+            sourceLanguage: favoriteSourceLanguage,
+            targetLanguage: favoriteTargetLanguage,
+          }
+        : {}),
       createdAt: Date.now(),
     });
   } else {
@@ -257,11 +400,17 @@ async function toggleFavorite(): Promise<void> {
 function selectSavedItem(item: {
   sourceText: string;
   translatedText: string;
+  sourceLanguage?: SourceLanguage;
+  targetLanguage?: TargetLanguage;
 }): void {
   currentAbortController?.abort();
   currentAbortController = null;
   requestSequence += 1;
   inputText.value = item.sourceText;
+  sourceLanguage.value = item.sourceLanguage ?? 'en';
+  targetLanguage.value =
+    item.targetLanguage ?? getDefaultTargetLanguage(sourceLanguage.value);
+  detectedLanguage.value = null;
   sourceText.value = item.sourceText;
   textKind.value = classifyText(item.sourceText);
   translatedText.value = item.translatedText;
@@ -301,7 +450,11 @@ function speakSource(): void {
 
   speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(sourceText.value);
-  utterance.lang = 'en-US';
+  const speechLanguage =
+    sourceLanguage.value === 'auto'
+      ? detectedLanguage.value ?? 'en'
+      : sourceLanguage.value;
+  utterance.lang = languageSpeechLocale(speechLanguage);
   speechSynthesis.speak(utterance);
 }
 
@@ -311,6 +464,7 @@ onBeforeUnmount(() => {
   currentAbortController?.abort();
   speechSynthesis.cancel();
   provider.destroy();
+  languageDetector.destroy();
 });
 
 onMounted(() => {
@@ -333,6 +487,8 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
   }
 
   inputText.value = message.payload.text;
+  sourceLanguage.value = 'auto';
+  detectedLanguage.value = null;
   void nextTick(() => {
     void translate(message.payload.source);
   });
@@ -352,12 +508,58 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
     </header>
 
     <section class="language-pair" aria-label="语言方向">
-      English <span aria-hidden="true">→</span> 简体中文
+      <select
+        :value="sourceLanguage"
+        class="language-select"
+        aria-label="源语言"
+        @change="setSourceLanguage(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="auto">自动检测</option>
+        <option
+          v-for="language in supportedLanguages"
+          :key="language.code"
+          :value="language.code"
+        >
+          {{ language.label }}
+        </option>
+      </select>
+      <span aria-hidden="true">→</span>
+      <select
+        v-if="sourceLanguage !== 'auto'"
+        :value="targetLanguage"
+        class="language-select"
+        aria-label="目标语言"
+        @change="setTargetLanguage(($event.target as HTMLSelectElement).value)"
+      >
+        <option
+          v-for="language in availableTargetLanguages"
+          :key="language"
+          :value="language"
+        >
+          {{ languageLabel(language) }}
+        </option>
+      </select>
+      <span v-else class="language-auto-target">
+        {{ detectedLanguage === null ? '自动选择' : languageLabel(getDefaultTargetLanguage(detectedLanguage)) }}
+      </span>
+      <button
+        v-if="
+          sourceLanguage !== 'auto' &&
+          isSupportedTranslationPair(targetLanguage, sourceLanguage)
+        "
+        class="language-swap"
+        type="button"
+        aria-label="交换语言方向"
+        @click="swapLanguages"
+      >
+        ↔
+      </button>
     </section>
 
     <TranslationInput
       v-model="inputText"
       :disabled="status === 'preparing-model' || status === 'translating'"
+      :source-language="sourceLanguage"
       @translate="translate"
       @clear="clearInput"
       @paste="handlePaste"

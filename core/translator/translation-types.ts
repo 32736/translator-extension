@@ -17,7 +17,6 @@ export interface TranslationResult {
   translatedText: string;
   sourceLanguage: SourceLanguage;
   targetLanguage: TargetLanguage;
-  provider: 'chrome-translator';
   cached: boolean;
   durationMs: number;
   createdAt: number;

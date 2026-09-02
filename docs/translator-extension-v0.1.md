@@ -1,10 +1,16 @@
-# 本地优先浏览器翻译插件 V0.1 技术实施文档
+# 本地优先浏览器翻译插件当前实现与维护边界（V0.3）
 
 > 面向 AI Coding Agent 的直接实施文档  
 > 目标平台：Chrome Desktop 138+，优先 Windows 11；后续兼容 Edge  
 > 技术栈：WXT + Vue 3 + TypeScript + Manifest V3 + Chrome Translator API + IndexedDB  
 > 产品定位：个人使用的“单词 / 短语 / 短句”轻量翻译工具  
 > 核心原则：本地优先、零服务端、零 API Key、翻译效果与响应速度优先
+
+### 当前范围说明
+
+V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、设置和 Chrome 内置翻译已完成；V0.2 已完成英中双向翻译与自动语言识别；V0.3 已完成日语/韩语到中文翻译。
+
+后续不扩展翻译 Provider、第三方 API 或 API 配置功能。词典、更多语言、Prompt API、Side Panel、段落翻译、页面双语辅助等也不作为本项目计划功能；后续仅修复和完善现有 Chrome 内置本地翻译能力。图标优化也不属于后续开发范围。
 
 ---
 
@@ -35,10 +41,10 @@
    - 不需要登录。
    - 不需要 API Key。
 
-4. **核心翻译使用 Chrome Built-in Translator API。**
-   - 最低 Chrome 版本为 138。
-   - 目标语言 V0.1 固定支持：英文 -> 简体中文。
-   - 代码必须预留 Provider 抽象，但 V0.1 只实现 `ChromeTranslatorProvider`。
+4. **核心翻译直接使用 Chrome Built-in Translator API。**
+    - 最低 Chrome 版本为 138。
+    - 当前正式支持：英文 ↔ 简体中文、日语 -> 简体中文、韩语 -> 简体中文。
+    - 通过内部 Chrome API 封装管理语言包、翻译实例和取消操作；不提供可配置 Provider。
 
 5. **网页划词不要“选中即自动翻译”。**
    - 用户选中文字后，出现一个很小的 `[译]` 按钮。
@@ -53,11 +59,11 @@
 7. **本地数据使用 IndexedDB。**
    - `chrome.storage.sync` 只保存少量设置。
    - `chrome.storage.local` 保存窗口尺寸/位置等小数据。
-   - 历史、收藏、翻译缓存、后续词典数据使用 IndexedDB。
+    - 历史、收藏和翻译缓存使用 IndexedDB；本项目不实现词典数据。
 
 8. **不要为了 V0.1 引入 Element Plus、Pinia、RxJS 等不必要依赖。**
    - Vue 3 Composition API 即可。
-   - 图标可使用 `lucide-vue-next`。
+    - 扩展图标使用 `public/icons/` 中的静态资源；界面内仅使用现有文本/CSS 符号。
    - 样式使用原生 CSS / CSS Variables。
    - 状态规模很小，不需要全局状态库。
 
@@ -66,16 +72,20 @@
    - 对 Built-in AI API 应单独提供类型声明文件。
 
 10. **不要超范围实现。**
-    V0.1 禁止加入：
+    当前不实现：
+    - 本地英汉词典、音标、词性、多义词和技术词典；
+    - 更多语言；
+    - Chrome Prompt API；
+    - Side Panel；
+    - 段落翻译；
+    - 页面双语辅助；
+    - 第三方翻译 API、Responses API 和 Provider 配置/切换；
     - 全文网页翻译；
     - PDF 翻译；
     - OCR；
     - 截图翻译；
     - 云同步；
     - 用户系统；
-    - AI 对话；
-    - Prompt API；
-    - 多 Provider UI；
     - 自建服务端。
 
 ---
@@ -84,9 +94,7 @@
 
 开发一个 Chrome 浏览器扩展，用于个人日常翻译：
 
-- 英文单词；
-- 英文短语；
-- 英文短句；
+- 英文、中文、日文和韩文的短文本；
 - 软件开发相关英文；
 - 浏览器网页划词；
 - 独立翻译窗口手动输入。
@@ -94,13 +102,13 @@
 核心体验：
 
 ```text
-网页中选中英文
+网页中选中文本
     ↓
 出现 [译]
     ↓
 点击
     ↓
-网页浮层显示中文
+网页浮层显示译文
     ↓
 可点击“在翻译器中打开”
     ↓
@@ -115,14 +123,14 @@
     ↓
 打开 / 激活独立翻译窗口
     ↓
-直接输入英文
+直接输入短文本
     ↓
 实时/手动翻译
 ```
 
 ---
 
-# 2. V0.1 功能范围
+# 2. 当前功能范围（V0.1 基线及 V0.2/V0.3 增量）
 
 ## 2.1 必须实现
 
@@ -143,8 +151,10 @@
 
 ### 翻译
 
-- 英文 -> 简体中文；
-- 使用 Chrome Translator API；
+- 英文 ↔ 简体中文；
+- 日语 -> 简体中文；
+- 韩语 -> 简体中文；
+- 通过 Chrome Built-in Translator API 执行翻译；
 - 能检测 API 是否可用；
 - 能检测语言对模型状态；
 - 首次需要下载时：
@@ -206,7 +216,7 @@
 ### 发音
 
 V0.1 可使用浏览器 `speechSynthesis`：
-- 英文原文播放；
+- 按源语言播放原文；
 - 单词/短句均可。
 
 ---
@@ -225,13 +235,13 @@ Manifest 设置：
 minimum_chrome_version: '138'
 ```
 
-V0.1 只正式验收：
+当前只正式验收：
 
 ```text
 Windows 11 + 最新稳定版 Chrome
 ```
 
-Edge 属于后续兼容目标，不作为 V0.1 阻塞条件。
+Edge 仍属于后续兼容目标，不作为当前版本阻塞条件。
 
 ---
 
@@ -244,41 +254,29 @@ Edge 属于后续兼容目标，不作为 V0.1 阻塞条件。
 | 编程语言 | TypeScript |
 | Manifest | MV3 |
 | 翻译 | Chrome Translator API |
-| 语言检测 | 本地规则优先；预留 Language Detector |
+| 语言检测 | 本地规则优先；Chrome Language Detector 作为兜底 |
 | 本地数据库 | IndexedDB |
 | 小型配置 | chrome.storage |
 | 快捷键 | chrome.commands |
 | 右键菜单 | chrome.contextMenus |
 | 窗口管理 | chrome.windows |
 | 页面注入 | Content Script |
-| 图标 | lucide-vue-next |
+| 图标 | `public/icons/` 静态资源 |
 | CSS | 原生 CSS + CSS Variables |
 
 ---
 
 # 5. 初始化工程
 
-推荐命令：
+当前工程命令：
 
 ```bash
-pnpm dlx wxt@latest init
+pnpm install
 ```
 
 选择 Vue 模板。
 
-依赖建议：
-
-```bash
-pnpm add lucide-vue-next
-```
-
-如果需要更方便地访问 IndexedDB，可选：
-
-```bash
-pnpm add idb
-```
-
-推荐使用 `idb`，避免自行维护大量 IndexedDB callback/transaction 样板。
+当前只依赖 Vue 3、WXT、TypeScript、Vue TypeScript 检查工具和 Vitest；IndexedDB 使用工程内的 repository 封装，UI 图标使用现有文本/CSS 实现，不额外引入 `lucide-vue-next` 或 `idb`。
 
 ---
 
@@ -326,35 +324,35 @@ translator-extension/
 │  │
 │  ├─ language/
 │  │   ├─ classify.ts
+│  │   ├─ language-detector.ts
 │  │   └─ types.ts
 │  │
 │  ├─ messaging/
 │  │   ├─ messages.ts
-│  │   └─ types.ts
 │  │
 │  ├─ storage/
 │  │   ├─ db.ts
 │  │   ├─ history-repository.ts
 │  │   ├─ favorite-repository.ts
 │  │   ├─ cache-repository.ts
+│  │   ├─ extension-repository.ts
 │  │   └─ settings.ts
 │  │
 │  └─ window/
 │      └─ translator-window.ts
 │
-├─ composables/
-│  ├─ useTranslation.ts
-│  ├─ useHistory.ts
-│  └─ useSettings.ts
+
 │
 ├─ types/
 │  └─ built-in-ai.d.ts
 │
 ├─ public/
-│  ├─ icon-16.png
-│  ├─ icon-32.png
-│  ├─ icon-48.png
-│  └─ icon-128.png
+│  └─ icons/
+│      ├─ icon-16.png
+│      ├─ icon-32.png
+│      ├─ icon-48.png
+│      ├─ icon-128.png
+│      └─ translator-taskbar.ico
 │
 ├─ wxt.config.ts
 ├─ tsconfig.json
@@ -379,6 +377,13 @@ export default defineConfig({
     description: 'Local-first lightweight translator',
     minimum_chrome_version: '138',
 
+    icons: {
+      16: 'icons/icon-16.png',
+      32: 'icons/icon-32.png',
+      48: 'icons/icon-48.png',
+      128: 'icons/icon-128.png',
+    },
+
     permissions: [
       'storage',
       'contextMenus',
@@ -386,6 +391,11 @@ export default defineConfig({
 
     action: {
       default_title: '打开翻译器',
+      default_icon: {
+        16: 'icons/icon-16.png',
+        32: 'icons/icon-32.png',
+        48: 'icons/icon-48.png',
+      },
     },
 
     commands: {
@@ -405,6 +415,7 @@ export default defineConfig({
 
 - 不创建 `popup` entrypoint；
 - `action` 只作为图标点击入口；
+- Translator 独立窗口当前通过 `entrypoints/translator/index.html` 引用 `icons/translator-taskbar.ico` 作为窗口/任务栏 favicon；
 - Content Script 的匹配范围由 WXT entrypoint 配置控制；
 - 如果 Content Script 采用 `<all_urls>`，注意 `chrome://` 等受限页面仍无法注入。
 
@@ -418,8 +429,8 @@ export default defineConfig({
 export interface TranslationRequest {
   id: string;
   text: string;
-  sourceLanguage: 'en';
-  targetLanguage: 'zh';
+  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
   source: 'window' | 'selection' | 'context-menu';
   createdAt: number;
 }
@@ -432,9 +443,8 @@ export interface TranslationResult {
   requestId: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage: 'en';
-  targetLanguage: 'zh';
-  provider: 'chrome-translator';
+  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
   cached: boolean;
   durationMs: number;
   createdAt: number;
@@ -461,51 +471,21 @@ export interface TranslationError {
 
 ---
 
-# 9. Provider 抽象
+# 9. 翻译执行边界
 
-必须从第一版就抽象。
+本项目只有一个翻译实现：Chrome Built-in Translator API。`TranslatorService` 负责输入校验、语言对校验、缓存、历史和错误处理；Chrome API 封装负责模型创建、下载进度、翻译取消以及实例释放。
 
-```ts
-export interface TranslateOptions {
-  sourceLanguage: 'en';
-  targetLanguage: 'zh';
-  signal?: AbortSignal;
-  onDownloadProgress?: (progress: number) => void;
-}
-
-export interface TranslatorProvider {
-  readonly id: string;
-
-  availability(
-    sourceLanguage: string,
-    targetLanguage: string,
-  ): Promise<string>;
-
-  translate(
-    text: string,
-    options: TranslateOptions,
-  ): Promise<string>;
-}
-```
-
-V0.1：
+当前调用链：
 
 ```text
-TranslatorProvider
-        │
-        └─ ChromeTranslatorProvider
+TranslatorService
+        ↓
+ChromeTranslatorProvider（内部 Chrome API 封装）
+        ↓
+Chrome Built-in Translator API
 ```
 
-后续可扩展：
-
-```text
-GeminiProvider
-AzureProvider
-DeepLProvider
-LocalModelProvider
-```
-
-但 V0.1 不实现。
+不实现 Provider Registry、第三方翻译 API、Responses API、API Key、默认 Provider 切换或请求级 Provider 选择。Background Service Worker 仍不直接执行 Translator API。
 
 ---
 
@@ -561,10 +541,12 @@ async availability(
     return 'unsupported';
   }
 
-  return Translator.availability({
+  const availability = await Translator.availability({
     sourceLanguage,
     targetLanguage,
   });
+
+  return normalizeAvailability(availability);
 }
 ```
 
@@ -579,7 +561,7 @@ downloading
 unavailable
 ```
 
-实现时必须以当前 Chrome Stable 实际 API 返回值为准，不允许硬编码错误枚举。
+实现时必须以当前 Chrome Stable 实际 API 返回值为准；当前实现会将未知值归一化为 `unknown`，不向业务层泄漏未支持的枚举。
 
 ---
 
@@ -632,7 +614,7 @@ export class TranslatorService {
   ): Promise<TranslationResult> {
     // 1. normalize
     // 2. cache lookup
-    // 3. provider translate
+    // 3. Chrome Translator API translate
     // 4. cache save
     // 5. history save
     // 6. return result
@@ -692,16 +674,16 @@ export function normalizeText(input: string): string {
 
 # 14. 缓存 Key
 
-建议：
+缓存 Key 使用固定的 Chrome Translator 实现标识、当前语言方向和规范化文本：
 
 ```text
 sourceLanguage
 +
 targetLanguage
 +
-normalizedText
+chrome-translator
 +
-providerId
+normalizedText
 ```
 
 计算 hash。
@@ -709,8 +691,7 @@ providerId
 例如：
 
 ```ts
-const keySource =
-  `en|zh|chrome-translator|${normalizedText}`;
+const keySource = `${sourceLanguage}|${targetLanguage}|chrome-translator|${normalizedText}`;
 ```
 
 可以使用 Web Crypto SHA-256。
@@ -740,9 +721,8 @@ interface TranslationCacheEntity {
   id: string;          // hash
   sourceText: string;
   translatedText: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-  provider: string;
+  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
   createdAt: number;
   lastUsedAt: number;
   hitCount: number;
@@ -760,8 +740,8 @@ interface HistoryEntity {
   id: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage: string;
-  targetLanguage: string;
+  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
   source: 'window' | 'selection' | 'context-menu';
   createdAt: number;
 }
@@ -777,6 +757,8 @@ interface FavoriteEntity {
   id: string;
   sourceText: string;
   translatedText: string;
+  sourceLanguage?: 'en' | 'zh' | 'ja' | 'ko';
+  targetLanguage?: 'en' | 'zh' | 'ja' | 'ko';
   createdAt: number;
 }
 ```
@@ -785,7 +767,7 @@ interface FavoriteEntity {
 
 # 16. 历史策略
 
-V0.1：
+当前实现：
 
 - 默认保存最近 500 条；
 - 新记录插入后异步清理超限旧记录；
@@ -1001,10 +983,10 @@ chrome.contextMenus.onClicked.addListener(
       return;
     }
 
-    await queueTranslationRequest({
-      text: info.selectionText,
-      source: 'context-menu',
-    });
+    await queueTranslationRequest(
+      info.selectionText,
+      'context-menu',
+    );
 
     await ensureTranslatorWindow();
   },
@@ -1035,6 +1017,8 @@ export type RuntimeMessage =
       type: 'TRANSLATOR_WINDOW_READY';
     };
 ```
+
+以上展示跨页面通信的核心消息；缓存、历史记录和收藏的读写消息也复用同一套 RuntimeMessage 类型定义。
 
 ---
 
@@ -1200,7 +1184,7 @@ if (!text) {
 限制建议：
 
 ```text
-最大划词长度 V0.1 = 1000 chars
+当前最大划词长度 = 1000 chars
 ```
 
 超出后：
@@ -1215,7 +1199,7 @@ if (!text) {
 
 # 28. 不处理的选择场景
 
-V0.1 可以主动排除：
+当前主动排除：
 
 ```text
 INPUT
@@ -1227,7 +1211,7 @@ contenteditable
 - 编辑器内部 selection 定位更复杂；
 - 容易影响用户输入。
 
-可以在 V0.2 再支持。
+当前仍不支持这些可编辑元素，避免影响用户输入；后续维护也不默认扩展该范围。
 
 如果选中元素位于上述节点，先不展示 `[译]`。
 
@@ -1302,9 +1286,9 @@ click Trigger
 
 ---
 
-# 32. Content Script 的 Translator 实例
+# 32. 页面侧的 Translator 实例
 
-Content Script 中如当前 Chrome 环境允许 Translator API，则由 Content Script 自己维护：
+当前实现中，Content Script 与独立翻译窗口各自维护一个 Chrome Translator API 封装实例：
 
 ```ts
 let translatorPromise:
@@ -1317,19 +1301,7 @@ let translatorPromise:
 Translator.create(...)
 ```
 
-需要注意：
-
-- 如果 Chrome 对特定扩展上下文的 Built-in AI API 可用性与页面隔离环境存在限制，应改为由隐藏的扩展页面/独立翻译页执行，再通过消息返回；
-- 但 **仍然不允许放到 MV3 Background Service Worker 中**；
-- 实施过程中必须用目标 Chrome Stable 进行实际验证，并将兼容层集中在 provider 中。
-
-建议优先实测：
-
-```text
-Content Script isolated world 是否存在 globalThis.Translator
-```
-
-如不存在，则将 Content Script 请求转发给当前已打开的 Translator extension page；如果没有窗口，可创建一个 offscreen/extension page 方案，但必须以 Chrome 官方对 Built-in AI API 的实际支持上下文为准，不能自行猜测。
+两者均在页面侧执行，不通过 Background Service Worker 调用 Translator API；如果当前上下文不支持 API，则向用户显示不可用错误，不实现 offscreen 或隐藏页面 fallback。
 
 V0.1 验收重点：最终网页划词功能必须稳定工作，而不是强制某一种内部执行上下文。
 
@@ -1403,10 +1375,10 @@ V0.1 最简单可靠方案：
 ```text
 ┌────────────────────────────────────┐
 │ Translator                    ⚙    │
-│ English → 简体中文                  │
+│ 自动检测 → 简体中文                 │
 ├────────────────────────────────────┤
 │                                    │
-│ 输入英文...                         │
+│ 输入短文本...                       │
 │                                    │
 │                          [清空]     │
 ├────────────────────────────────────┤
@@ -1469,7 +1441,7 @@ currentAbortController =
   new AbortController();
 ```
 
-传入 Provider。
+传入 Chrome API 封装。
 
 避免：
 
@@ -1493,10 +1465,10 @@ speechSynthesis.speak(
 );
 ```
 
-原文为英文：
+发音语言按当前源语言确定：
 
 ```ts
-utterance.lang = 'en-US';
+utterance.lang = languageSpeechLocale(sourceLanguage);
 ```
 
 停止：
@@ -1540,31 +1512,29 @@ export function classifyText(text: string) {
 }
 ```
 
-此分类只是 UI/后续词典入口，不用于决定语言。
+此分类当前只用于 UI 标签，不用于决定语言，也不代表已实现词典能力。
 
 ---
 
 # 40. 语言策略
 
-V0.1 目标明确：
+当前支持的语言和语言对由 `core/translator/languages.ts` 统一定义：
 
 ```text
 en -> zh
+zh -> en
+ja -> zh
+ko -> zh
 ```
 
-因此：
+独立翻译窗口支持：
 
-- 单词/短句默认都按英文处理；
-- 如果输入明显包含大量中文，提示：
-  - “V0.1 当前仅支持英文 -> 简体中文”
-- 不需要每次调用 Language Detector。
+- 手动选择源语言和目标语言；
+- 自动检测源语言；
+- 自动检测时根据识别结果选择默认目标语言；
+- 仅允许当前支持的语言对，禁止相同语言互译或未定义语言对。
 
-这是更可靠、更简单的实现。
-
-后续 V0.2 再加入：
-- zh -> en；
-- ja -> zh；
-- 自动语言识别。
+语言识别采用本地文字特征规则优先；无法直接判断时，使用 Chrome Language Detector API 作为兜底。网页划词默认交给独立窗口自动检测语言。
 
 ---
 
@@ -1588,7 +1558,7 @@ en -> zh
 ## 语言模型不可用
 
 ```text
-当前设备无法使用英文 → 简体中文本地翻译模型。
+当前设备无法使用当前语言方向的本地翻译模型。
 ```
 
 ## 下载失败
@@ -1605,7 +1575,7 @@ en -> zh
 翻译失败，请重试。
 ```
 
-Developer Console 记录详细错误，UI 不展示堆栈。
+UI 不展示错误堆栈，也不输出用户原文或完整译文日志。
 
 ---
 
@@ -1633,7 +1603,7 @@ V0.1 设置项尽量少：
   打开 chrome://extensions/shortcuts
 ```
 
-不要加入 API Provider 设置。
+不要加入第三方 API 或 Provider 设置。
 
 ---
 
@@ -1674,7 +1644,7 @@ theme-dark
 
 # 44. 性能要求
 
-V0.1 目标：
+当前性能要求：
 
 - 扩展安装后不持续高 CPU；
 - Content Script 不高频轮询；
@@ -1779,6 +1749,8 @@ I'm not sure what you mean.
 
 # 48. 功能验收标准
 
+以下清单描述当前版本的验收项目；勾选状态仅代表实际验收记录，不因文档同步自动视为已完成。
+
 ## 48.1 独立窗口
 
 - [ ] 点击扩展图标打开独立窗口；
@@ -1793,13 +1765,14 @@ I'm not sure what you mean.
 ## 48.2 翻译
 
 - [ ] Chrome 138+ 可检测 Translator；
-- [ ] `en -> zh` availability 正确处理；
+- [ ] 当前支持的语言对均可正确处理（`en ↔ zh`、`ja → zh`、`ko → zh`）；
+- [ ] 自动语言识别和手动源语言选择均可用；
 - [ ] 首次模型准备有进度 UI；
 - [ ] `deprecated` 可以翻译；
 - [ ] 技术短句可以翻译；
 - [ ] 连续翻译不会频繁 recreate Translator；
 - [ ] 新请求能取消旧请求；
-- [ ] 缓存命中不重新调用 Provider；
+- [ ] 缓存命中不重新调用 Chrome Translator API；
 - [ ] 翻译结果写入历史。
 
 ## 48.3 划词
@@ -1833,7 +1806,7 @@ I'm not sure what you mean.
 
 # 49. 开发阶段拆分
 
-AI Agent 必须按阶段实施，不要一次完成所有模块后再测试。
+以下阶段是历史实施记录。当前工程已完成 Phase 1～10，以及 V0.2/V0.3 中的语言能力扩展；新增工作只按第 54 节的维护范围执行。
 
 ## Phase 1：工程骨架
 
@@ -1881,7 +1854,7 @@ Ctrl+Shift+L
 
 先不要做 UI。
 
-建立：
+建立 Chrome API 封装：
 
 ```text
 ChromeTranslatorProvider
@@ -1897,7 +1870,7 @@ This API has been deprecated.
 
 必须真实使用 Chrome Stable 验证 API。
 
-如果此阶段 Built-in AI API 行为与文档不一致，先修正 provider，再继续。
+如果此阶段 Built-in AI API 行为与文档不一致，先修正 Chrome API 封装，再继续。
 
 ---
 
@@ -2009,15 +1982,16 @@ Clear history/cache/favorites
 6. 更新 README 的当前进度；
 7. 不进入下一阶段，直到当前阶段基本可用。
 
-推荐命令：
+当前工程验证命令：
 
 ```bash
-pnpm lint
 pnpm typecheck
+pnpm test
 pnpm build
+pnpm zip
 ```
 
-实际以 package.json scripts 为准。
+实际以 `package.json` scripts 为准；当前工程未配置独立的 `lint` script。
 
 ---
 
@@ -2045,34 +2019,23 @@ noUncheckedIndexedAccess: true（推荐）
 
 # 52. 日志策略
 
-提供轻量 logger：
+当前工程不引入独立 logger。必要错误只通过 UI 的稳定错误状态处理；生产环境：
 
-```ts
-logger.debug()
-logger.info()
-logger.warn()
-logger.error()
-```
-
-开发环境 debug 开启。
-
-生产环境：
 - 不输出 selection 原文；
 - 不输出完整翻译内容；
-- 错误只记录必要状态。
+- 不记录 API Key 或请求内容。
 
 防止无意将用户文本写入日志。
 
 ---
 
-# 53. V0.1 不需要做的“伪高级功能”
+# 53. V0.1 阶段不需要做的“伪高级功能”
 
 AI Agent 不要主动添加：
 
 ```text
 流式翻译
 AI 对话
-多语言自动识别
 多模型评分
 术语 RAG
 向量数据库
@@ -2098,81 +2061,57 @@ SSE
 
 ---
 
-# 54. 后续版本预留
+# 54. 后续范围
 
-## V0.2
+后续不再按 V0.2/V0.3/V0.4/V0.5 增加新的产品功能，只修复和完善现有 Chrome 内置本地翻译能力。
 
-```text
-本地英汉词典
-音标
-词性
-多义词
-技术词汇
-中 -> 英
-Language Detector
-```
+明确不实现：
 
-## V0.3
+- 本地英汉词典、音标、词性、多义词和技术词典；
+- 更多语言；
+- Chrome Prompt API；
+- Side Panel；
+- 段落翻译；
+- 页面双语辅助；
+- 第三方翻译 API、Responses API 和 Provider 配置/切换；
+- 全文网页翻译、PDF 翻译、OCR 和截图翻译；
+- 云同步、用户系统和自建服务端。
 
-```text
-日 -> 中
-韩 -> 中
-更多语言
-Provider 切换
-```
-
-## V0.4
-
-```text
-Chrome Prompt API
-“解释这句话”
-“解释这个技术术语”
-```
-
-## V0.5
-
-```text
-Side Panel
-段落翻译
-页面双语辅助
-```
+后续维护范围仅包括：Chrome Translator API 兼容性修复、语言包下载体验、翻译错误处理、缓存/历史/收藏可靠性和现有界面问题。
 
 ---
 
-# 55. 后续本地词典接口
-
-虽然 V0.1 暂不实现完整本地词库，但提前定义：
-
-```ts
-export interface DictionaryEntry {
-  word: string;
-  phonetic?: string;
-  parts: Array<{
-    partOfSpeech?: string;
-    definitions: string[];
-  }>;
-}
-
-export interface DictionaryProvider {
-  lookup(word: string): Promise<DictionaryEntry | null>;
-}
-```
-
-以后：
+# 55. 当前最终架构
 
 ```text
-TextClassifier
-↓
-word
-↓
-DictionaryProvider
-+
-TranslatorProvider
-↓
-组合成单词卡片
+Translator Window / Content Script
+                ↓
+        TranslatorService
+                ↓
+ ChromeTranslatorProvider（内部 Chrome API 封装）
+                ↓
+      Chrome Built-in Translator API
+                ↓
+       Cache / History / Favorites
 ```
 
-不需要改现有翻译核心。
+约束：
+
+- 只使用 Chrome Built-in Translator API；
+- 不提供 Provider 注册表、配置页、默认切换或请求级选择；
+- 不保存或读取第三方 API Key；
+- Background Service Worker 不直接调用 Translator API；
+- Provider 相关文件仅作为内部 Chrome API 封装，不构成可扩展的产品功能；
+- 新增需求必须先确认是否仍属于本地翻译范围，禁止借此重新引入第三方 Provider。
+
+验收重点：
+
+- 默认 Chrome 翻译路径无回归；
+- 独立窗口、划词、右键菜单、快捷键继续可用；
+- 语言包首次下载有明确进度和错误提示；
+- 缓存命中不重复调用 Chrome Translator API；
+- 历史、收藏和缓存仍只保存在本地；
+- typecheck、test、build 和 Chrome Stable 实机验证通过。
 
 ---
 
@@ -2202,9 +2141,9 @@ TranslatorProvider
 │                  │       │                           │
 │                yes       no                          │
 │                  │       ↓                           │
-│                  │ ChromeTranslatorProvider          │
+│                  │ ChromeTranslatorProvider         │
 │                  │       │                           │
-│                  │ Chrome Translator API             │
+│                  │ Chrome Built-in Translator API   │
 │                  │       │                           │
 │                  └───┬───┘                           │
 │                      ↓                               │
@@ -2229,48 +2168,48 @@ TranslatorProvider
 
 ---
 
-# 57. 首版完成定义（Definition of Done）
+# 57. 当前版本完成定义（Definition of Done）
 
-只有同时满足以下条件，V0.1 才算完成：
+以下条件用于判断当前版本是否可交付；V0.1 的基础能力、V0.2 的英中双向翻译与自动语言识别、V0.3 的日语/韩语到中文翻译均已纳入当前实现：
 
 1. 插件可在 Chrome 138+ 以开发者模式加载；
 2. 无 Manifest 错误；
 3. 点击扩展图标可以打开独立窗口；
 4. 独立窗口保持单实例；
 5. 快捷键能打开独立窗口；
-6. 能使用 Chrome Translator API 完成英文 -> 中文；
-7. 首次模型准备过程用户可感知；
-8. 独立窗口可输入、翻译、复制、发音；
-9. 网页选中文字可以点击 `[译]` 翻译；
-10. 网页翻译 Popover 可正常关闭；
-11. 可以将划词内容发送到独立窗口；
-12. 右键翻译有效；
-13. 历史记录有效；
-14. 收藏有效；
-15. 翻译缓存有效；
-16. 浏览器重启后本地数据仍存在；
-17. TypeScript 无错误；
-18. Production build 成功；
-19. Chrome DevTools 无持续报错；
-20. 不依赖任何用户自己的服务器或第三方翻译 API。
+6. 能使用 Chrome Translator API 完成当前支持的语言对翻译（`en ↔ zh`、`ja → zh`、`ko → zh`）；
+7. 支持手动选择源语言以及自动语言识别；
+8. 首次模型准备过程用户可感知；
+9. 独立窗口可输入、翻译、复制、发音；
+10. 网页选中文字可以点击 `[译]` 翻译；
+11. 网页翻译 Popover 可正常关闭；
+12. 可以将划词内容发送到独立窗口；
+13. 右键翻译有效；
+14. 历史记录有效；
+15. 收藏有效；
+16. 翻译缓存有效；
+17. 浏览器重启后本地数据仍存在；
+18. TypeScript 无错误；
+19. Production build 成功；
+20. Chrome DevTools 无持续报错；
+21. 不依赖任何用户自己的服务器或第三方翻译 API。
 
 ---
 
-# 58. AI Coding Agent 首条实施指令
+# 58. 维护时给 AI Coding Agent 的实施指令
 
-将本 Markdown 文档放到项目根目录，例如：
+维护当前工程时，先阅读本 Markdown 文档全文，并核对代码、`README.md` 与实际构建结果：
 
 ```text
 docs/translator-extension-v0.1.md
 ```
 
-然后给 AI Agent 以下指令：
+维护要求：
 
-> 阅读 `docs/translator-extension-v0.1.md` 全文，并严格按照文档实施。  
-> 不要一次实现全部功能，必须从 Phase 1 开始，按 Phase 顺序逐阶段实施和验证。  
-> 文档中的“实施总则”和“禁止项”属于强制约束，不得自行改变技术路线。  
-> 每个 Phase 完成后，先运行 typecheck/build，并修复当前阶段问题，再进入下一阶段。  
-> 遇到 Chrome Translator API / WXT API 的版本差异时，优先核对当前官方文档和本机 Chrome Stable 的实际行为，不要凭旧知识猜测。  
+> 先核对当前实现，不要重新引入第三方 API、Responses API、Provider 配置或已明确排除的功能。
+> 新改动只应落在第 54 节定义的维护范围内；涉及行为变化时，先补充或调整测试。
+> 修改前后运行 `pnpm typecheck`、`pnpm test`、`pnpm build`；需要交付压缩包时再运行 `pnpm zip`。
+> 遇到 Chrome Translator API / WXT API 的版本差异时，优先核对当前 Chrome Stable 的官方文档和实际行为，不要凭旧知识猜测。
 > 不要引入服务器、OpenAI、Gemini、DeepL、Azure 或任何第三方翻译 API。
 
 ---

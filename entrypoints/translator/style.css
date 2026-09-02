@@ -175,6 +175,33 @@ h1 {
   color: var(--text);
 }
 
+.language-select {
+  min-width: 92px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.language-auto-target {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.language-swap {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 4px;
+  font-size: 16px;
+}
+
+.language-swap:hover {
+  color: var(--text);
+}
+
 h2,
 .section-label-row label {
   margin: 0;

@@ -9,9 +9,10 @@
 - [x] Phase 1：WXT + Vue 3 + TypeScript + MV3 工程骨架
 - [x] Phase 1：扩展图标打开独立 translator 窗口
 - [x] Phase 2：窗口单实例、尺寸与位置恢复、快捷键
-- [x] Phase 3：Chrome Translator API Provider 封装
+- [x] Phase 3：Chrome Translator API 封装
 - [x] Phase 3：Chrome Stable 实机检测（localhost，`availability: downloadable`）
-- [ ] Phase 3：Chrome Stable 语言包下载与最终译文（当前隔离 profile 下载未完成）
+- [x] Phase 3：Chrome Stable 最终中文译文实机验证（独立窗口与网页划词）
+- [x] Phase 3：首次语言包下载进度实机验证
 - [x] Phase 4：独立窗口翻译 UI
 - [x] Phase 5：IndexedDB 持久化缓存、历史和收藏
 - [x] Phase 6：网页划词按钮与 Popover
@@ -19,16 +20,21 @@
 - [x] Phase 8：右键菜单翻译
 - [x] Phase 9：设置与 UI 收尾
 - [x] Phase 10：TypeScript、production build、manifest 与禁止项静态验收
+- [x] V0.2：英中双向翻译与自动语言识别
+- [ ] V0.2：本地英汉词典（暂缓）
+- [x] V0.3：日语/韩语 → 简体中文
+- [x] V0.3：语言目录与语言对校验
 
-说明：Chrome Stable 的 Translator API 已在 localhost 实机确认可用并返回
-`availability: downloadable`；隔离测试 profile 中的语言包下载未在本轮验证环境内完成，
-因此最终中文译文的实机验收仍需在允许 Chrome 下载语言包的 profile 中完成。
+说明：Chrome Stable 已实机验证独立窗口、网页划词、首次语言包下载进度以及日语/韩语翻译；词典、更多语言和其它产品功能不在当前计划内。当前支持英文 ↔ 简体中文、日语 → 简体中文、韩语 → 简体中文，自动识别覆盖英文、中文、日文和韩文的明显文本。当前版本只使用 Chrome 内置 Translator API，不提供第三方 API、Responses API 或多 Provider 配置功能；后续仅修复和完善现有本地翻译能力。
+
+完整范围与后续边界见：[技术实施文档](D:/Codes/FQG/translator-extension/docs/translator-extension-v0.1.md)。
 
 ## 开发
 
 ```bash
 corepack pnpm install
 corepack pnpm dev
+corepack pnpm test
 corepack pnpm typecheck
 corepack pnpm build
 ```
