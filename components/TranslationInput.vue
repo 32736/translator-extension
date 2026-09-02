@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import type { SourceLanguage } from '../core/translator/types';
-import { languageInputLabel } from '../core/translator/languages';
+import { computed, onMounted, ref } from 'vue';
+import {
+  getUiCopy,
+  type DisplayLanguage,
+} from '../core/i18n/ui';
 
-defineProps<{
+const props = defineProps<{
   modelValue: string;
   disabled: boolean;
-  sourceLanguage: SourceLanguage | 'auto';
+  displayLanguage: DisplayLanguage;
 }>();
+
+const copy = computed(() => getUiCopy(props.displayLanguage));
 
 const emit = defineEmits<{
   'update:modelValue': [value: string];
@@ -15,6 +20,12 @@ const emit = defineEmits<{
   paste: [];
 }>();
 
+const textareaRef = ref<HTMLTextAreaElement | null>(null);
+
+onMounted(() => {
+  textareaRef.value?.focus();
+});
+
 function handleKeydown(event: KeyboardEvent): void {
   if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
     event.preventDefault();
@@ -22,36 +33,34 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
-function inputLabel(sourceLanguage: SourceLanguage | 'auto'): string {
-  if (sourceLanguage === 'auto') {
-    return '输入内容';
-  }
-
-  return languageInputLabel(sourceLanguage);
-}
 </script>
 
 <template>
-  <section class="input-card" aria-labelledby="input-title">
-    <div class="section-label-row">
-      <label id="input-title" for="translation-input">{{ inputLabel(sourceLanguage) }}</label>
+  <div class="input-panel" aria-labelledby="input-title">
+    <div class="field-heading">
+      <label id="input-title" for="translation-input">{{ copy.inputLabel }}</label>
       <button
-        v-if="modelValue"
-        class="text-button"
+        class="text-button subtle-button clear-input-button"
+        :class="{ 'is-hidden': !modelValue }"
         type="button"
-        :disabled="disabled"
+        :disabled="disabled || !modelValue"
+        :aria-hidden="!modelValue ? 'true' : undefined"
+        :title="copy.clearSource"
         @click="emit('clear')"
       >
-        清空
+        {{ copy.clear }}
       </button>
     </div>
 
     <textarea
       id="translation-input"
+      ref="textareaRef"
       :value="modelValue"
       :disabled="disabled"
-      rows="6"
-      placeholder="输入单词、短语或短句…"
+      rows="4"
+      :aria-label="copy.inputLabel"
+      autofocus
+      :placeholder="copy.inputPlaceholder"
       spellcheck="false"
       @input="emit('update:modelValue', ($event.target as HTMLTextAreaElement).value)"
       @keydown="handleKeydown"
@@ -59,10 +68,11 @@ function inputLabel(sourceLanguage: SourceLanguage | 'auto'): string {
     />
 
     <div class="input-footer">
-      <span class="hint">Ctrl / ⌘ + Enter 翻译</span>
+      <span class="keyboard-hint"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd></span>
       <button class="primary-button" type="button" :disabled="disabled" @click="emit('translate')">
-        翻译
+        <span>{{ copy.translate }}</span>
+        <kbd aria-hidden="true">↵</kbd>
       </button>
     </div>
-  </section>
+  </div>
 </template>

@@ -18,8 +18,14 @@ import {
   IndexedDbFavoriteRepository,
 } from '../../core/storage/favorite-repository';
 import {
+  getUiCopy,
+  languageLabelForDisplay,
+  type DisplayLanguage,
+} from '../../core/i18n/ui';
+import {
   isSettings,
   loadSettings,
+  saveSettings,
   SETTINGS_KEY,
   type Settings,
 } from '../../core/storage/settings';
@@ -28,11 +34,8 @@ import {
   ChromeLanguageDetector,
 } from '../../core/language/language-detector';
 import {
-  getDefaultTargetLanguage,
-  getTargetLanguages,
   isSupportedLanguage,
   isSupportedTranslationPair,
-  languageLabel,
   languageSpeechLocale,
   SUPPORTED_LANGUAGES,
 } from '../../core/translator/languages';
@@ -59,30 +62,49 @@ type TranslationStatus =
   | 'success'
   | 'error';
 
+type SavedTab = 'history' | 'favorites';
+
 const inputText = ref('');
 const sourceText = ref('');
 const translatedText = ref('');
 const status = ref<TranslationStatus>('idle');
 const progress = ref(0);
 const errorMessage = ref('');
-const copyLabel = ref('复制');
+const displayLanguage = ref<DisplayLanguage>('zh');
+const ui = computed(() => getUiCopy(displayLanguage.value));
+const preparingState = ref<'translation' | 'language-detection'>('translation');
+const preparingLabel = computed(() =>
+  preparingState.value === 'language-detection'
+    ? ui.value.preparingLanguageModel
+    : ui.value.preparingTranslationModel,
+);
+const copyState = ref<'copy' | 'copied' | 'failed'>('copy');
+const copyLabel = computed(() => {
+  if (copyState.value === 'copied') {
+    return ui.value.copied;
+  }
+
+  if (copyState.value === 'failed') {
+    return ui.value.copyFailed;
+  }
+
+  return ui.value.copy;
+});
 const favorited = ref(false);
 const textKind = ref<TextKind | null>(null);
-const activeSavedTab = ref<'history' | 'favorites'>('history');
+const activeSavedTab = ref<SavedTab>('history');
 const historyItems = ref<HistoryEntity[]>([]);
 const favoriteItems = ref<FavoriteEntity[]>([]);
-const sourceLanguage = ref<SourceLanguage | 'auto'>('en');
+const sourceLanguage = ref<SourceLanguage | 'auto'>('auto');
 const targetLanguage = ref<TargetLanguage>('zh');
 const detectedLanguage = ref<SourceLanguage | null>(null);
 const supportedLanguages = SUPPORTED_LANGUAGES;
-const availableTargetLanguages = computed<readonly TargetLanguage[]>(() =>
-  sourceLanguage.value === 'auto'
-    ? []
-    : getTargetLanguages(sourceLanguage.value),
-);
+const availableTargetLanguages: readonly TargetLanguage[] =
+  SUPPORTED_LANGUAGES.map((language) => language.code);
 const settings = ref<Settings>({
   theme: 'system',
   selectionEnabled: true,
+  displayLanguage: 'zh',
 });
 
 const provider = new ChromeTranslatorProvider();
@@ -97,6 +119,47 @@ const service = new TranslatorService(
 );
 let currentAbortController: AbortController | null = null;
 let requestSequence = 0;
+const savedTabOrder: readonly SavedTab[] = ['history', 'favorites'];
+
+function selectSavedTab(tab: SavedTab): void {
+  activeSavedTab.value = tab;
+}
+
+function handleSavedTabKeydown(event: KeyboardEvent, currentTab: SavedTab): void {
+  const currentIndex = savedTabOrder.indexOf(currentTab);
+  let nextIndex: number;
+
+  switch (event.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      nextIndex = (currentIndex + 1) % savedTabOrder.length;
+      break;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      nextIndex = (currentIndex - 1 + savedTabOrder.length) % savedTabOrder.length;
+      break;
+    case 'Home':
+      nextIndex = 0;
+      break;
+    case 'End':
+      nextIndex = savedTabOrder.length - 1;
+      break;
+    default:
+      return;
+  }
+
+  const nextTab = savedTabOrder[nextIndex];
+
+  if (nextTab === undefined) {
+    return;
+  }
+
+  event.preventDefault();
+  selectSavedTab(nextTab);
+  void nextTick(() => {
+    document.getElementById(`saved-tab-${nextTab}`)?.focus();
+  });
+}
 
 function isCurrentRequest(requestId: string): boolean {
   return requestId === `window-${requestSequence}`;
@@ -104,14 +167,14 @@ function isCurrentRequest(requestId: string): boolean {
 
 function textKindLabel(kind: TextKind | null): string {
   if (kind === 'word') {
-    return '单词';
+    return ui.value.word;
   }
 
   if (kind === 'phrase') {
-    return '短语';
+    return ui.value.phrase;
   }
 
-  return kind === 'sentence' ? '句子' : '';
+  return kind === 'sentence' ? ui.value.sentence : '';
 }
 
 function clearTranslationState(): void {
@@ -123,6 +186,7 @@ function clearTranslationState(): void {
   status.value = 'idle';
   errorMessage.value = '';
   progress.value = 0;
+  preparingState.value = 'translation';
   favorited.value = false;
   textKind.value = null;
 }
@@ -140,17 +204,12 @@ function setSourceLanguage(value: string): void {
   }
 
   sourceLanguage.value = value;
-  targetLanguage.value = getDefaultTargetLanguage(value);
   detectedLanguage.value = null;
   clearTranslationState();
 }
 
 function setTargetLanguage(value: string): void {
-  if (
-    !isSupportedLanguage(value) ||
-    sourceLanguage.value === 'auto' ||
-    !isSupportedTranslationPair(sourceLanguage.value, value)
-  ) {
+  if (!isSupportedLanguage(value)) {
     return;
   }
 
@@ -183,8 +242,66 @@ function applyTheme(theme: Settings['theme']): void {
   }
 }
 
+function applyDisplayLanguage(language: DisplayLanguage): void {
+  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+}
+
 function openOptions(): void {
   void chrome.runtime.openOptionsPage();
+}
+
+async function setDisplayLanguage(language: DisplayLanguage): Promise<void> {
+  if (displayLanguage.value === language) {
+    return;
+  }
+
+  const savedSettings = await saveSettings({ displayLanguage: language });
+  settings.value = savedSettings;
+  displayLanguage.value = savedSettings.displayLanguage;
+  applyDisplayLanguage(savedSettings.displayLanguage);
+  targetLanguage.value = savedSettings.displayLanguage;
+  clearTranslationState();
+}
+
+function getTranslationPairForDisplay(): string {
+  const resolvedSourceLanguage =
+    sourceLanguage.value === 'auto'
+      ? detectedLanguage.value
+      : sourceLanguage.value;
+
+  if (resolvedSourceLanguage === null) {
+    return '';
+  }
+
+  return `${languageLabelForDisplay(resolvedSourceLanguage, displayLanguage.value)} → ${languageLabelForDisplay(targetLanguage.value, displayLanguage.value)}`;
+}
+
+function getLocalizedErrorMessage(error: unknown): string {
+  if (!(error instanceof TranslationServiceError)) {
+    return ui.value.translationFailed;
+  }
+
+  switch (error.details.code) {
+    case 'INVALID_INPUT':
+      return sourceLanguage.value !== 'auto' &&
+        sourceLanguage.value === targetLanguage.value
+        ? ui.value.sameLanguage
+        : ui.value.invalidInput;
+    case 'PAIR_UNAVAILABLE': {
+      const pair = getTranslationPairForDisplay();
+      return pair === '' ? ui.value.translationFailed : ui.value.pairUnavailable(pair);
+    }
+    case 'API_UNSUPPORTED':
+      return ui.value.apiUnsupported;
+    case 'MODEL_DOWNLOAD_FAILED':
+      return ui.value.modelDownloadFailed;
+    case 'ABORTED':
+      return ui.value.aborted;
+    case 'TRANSLATION_FAILED':
+      return ui.value.translationFailed;
+    default:
+      return ui.value.translationFailed;
+  }
 }
 
 function handleSettingsChanged(
@@ -198,15 +315,24 @@ function handleSettingsChanged(
   const value: unknown = changes[SETTINGS_KEY]?.newValue;
 
   if (isSettings(value)) {
+    const displayLanguageChanged =
+      displayLanguage.value !== value.displayLanguage;
     settings.value = value;
     applyTheme(value.theme);
+
+    if (displayLanguageChanged) {
+      displayLanguage.value = value.displayLanguage;
+      applyDisplayLanguage(value.displayLanguage);
+      targetLanguage.value = value.displayLanguage;
+      clearTranslationState();
+    }
   }
 }
 
 async function refreshSavedData(): Promise<void> {
   const [history, favorites] = await Promise.all([
-    historyRepository.list(30),
-    favoriteRepository.list(30),
+    historyRepository.list(5),
+    favoriteRepository.list(5),
   ]);
   historyItems.value = history;
   favoriteItems.value = favorites;
@@ -229,7 +355,7 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
   currentAbortController = null;
   translatedText.value = '';
   errorMessage.value = '';
-  copyLabel.value = '复制';
+  copyState.value = 'copy';
 
   if (!text) {
     sourceText.value = '';
@@ -245,6 +371,7 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
   textKind.value = classifyText(text);
   status.value = 'preparing-model';
   progress.value = 0;
+  preparingState.value = 'translation';
   if (sourceLanguage.value === 'auto') {
     detectedLanguage.value = null;
   }
@@ -258,6 +385,7 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
         onDownloadProgress: (downloadProgress) => {
           if (isCurrentRequest(requestId)) {
             status.value = 'preparing-model';
+            preparingState.value = 'language-detection';
             progress.value = downloadProgress;
           }
         },
@@ -269,17 +397,19 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
 
       if (detected === null) {
         status.value = 'error';
-        errorMessage.value = '无法识别输入语言，请手动选择源语言。';
+        errorMessage.value = ui.value.cannotDetectLanguage;
         return;
       }
 
       detectedLanguage.value = detected;
       resolvedSourceLanguage = detected;
-      resolvedTargetLanguage = getDefaultTargetLanguage(detected);
+      resolvedTargetLanguage = targetLanguage.value;
     } else {
       resolvedSourceLanguage = sourceLanguage.value;
       resolvedTargetLanguage = targetLanguage.value;
     }
+
+    preparingState.value = 'translation';
 
     const request: TranslationRequest = {
       id: requestId,
@@ -326,11 +456,17 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
       return;
     }
 
+    if (
+      abortController.signal.aborted ||
+      (error instanceof DOMException && error.name === 'AbortError') ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      status.value = 'idle';
+      return;
+    }
+
     status.value = 'error';
-    errorMessage.value =
-      error instanceof TranslationServiceError
-        ? error.details.message
-        : '翻译失败，请重试。';
+    errorMessage.value = getLocalizedErrorMessage(error);
   } finally {
     if (isCurrentRequest(requestId)) {
       currentAbortController = null;
@@ -370,12 +506,7 @@ async function toggleFavorite(): Promise<void> {
       sourceLanguage.value === 'auto'
         ? detectedLanguage.value
         : sourceLanguage.value;
-    const favoriteTargetLanguage =
-      sourceLanguage.value === 'auto'
-        ? detectedLanguage.value === null
-          ? null
-          : getDefaultTargetLanguage(detectedLanguage.value)
-        : targetLanguage.value;
+    const favoriteTargetLanguage = targetLanguage.value;
 
     await favoriteRepository.save({
       id,
@@ -397,6 +528,28 @@ async function toggleFavorite(): Promise<void> {
   await refreshFavoriteState();
 }
 
+async function deleteHistoryItem(item: HistoryEntity): Promise<void> {
+  await historyRepository.remove(item.id);
+  await refreshSavedData();
+}
+
+async function clearHistory(): Promise<void> {
+  await historyRepository.clear();
+  await refreshSavedData();
+}
+
+async function deleteFavoriteItem(item: FavoriteEntity): Promise<void> {
+  await favoriteRepository.remove(item.id);
+  await refreshSavedData();
+  await refreshFavoriteState();
+}
+
+async function clearFavorites(): Promise<void> {
+  await favoriteRepository.clear();
+  await refreshSavedData();
+  await refreshFavoriteState();
+}
+
 function selectSavedItem(item: {
   sourceText: string;
   translatedText: string;
@@ -407,9 +560,8 @@ function selectSavedItem(item: {
   currentAbortController = null;
   requestSequence += 1;
   inputText.value = item.sourceText;
-  sourceLanguage.value = item.sourceLanguage ?? 'en';
-  targetLanguage.value =
-    item.targetLanguage ?? getDefaultTargetLanguage(sourceLanguage.value);
+  sourceLanguage.value = item.sourceLanguage ?? 'auto';
+  targetLanguage.value = item.targetLanguage ?? 'zh';
   detectedLanguage.value = null;
   sourceText.value = item.sourceText;
   textKind.value = classifyText(item.sourceText);
@@ -434,12 +586,12 @@ async function copyTranslation(): Promise<void> {
 
   try {
     await navigator.clipboard.writeText(translatedText.value);
-    copyLabel.value = '已复制';
+    copyState.value = 'copied';
     window.setTimeout(() => {
-      copyLabel.value = '复制';
+      copyState.value = 'copy';
     }, 1500);
   } catch {
-    copyLabel.value = '复制失败';
+    copyState.value = 'failed';
   }
 }
 
@@ -472,6 +624,9 @@ onMounted(() => {
   chrome.storage.onChanged.addListener(handleSettingsChanged);
   void loadSettings().then((loadedSettings) => {
     settings.value = loadedSettings;
+    displayLanguage.value = loadedSettings.displayLanguage;
+    applyDisplayLanguage(loadedSettings.displayLanguage);
+    targetLanguage.value = loadedSettings.displayLanguage;
     applyTheme(loadedSettings.theme);
   });
   void refreshSavedData();
@@ -498,122 +653,214 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
 <template>
   <main class="translator-shell">
     <header class="translator-header">
-      <div>
-        <p class="eyebrow">LOCAL-FIRST TRANSLATOR</p>
-        <h1>Translator</h1>
+      <h1 class="sr-only">{{ ui.appTitle }}</h1>
+      <div
+        class="display-language-switch"
+        role="group"
+        :aria-label="ui.displayLanguage"
+      >
+        <button
+          class="display-language-button"
+          :class="{ active: displayLanguage === 'zh' }"
+          type="button"
+          :aria-pressed="displayLanguage === 'zh'"
+          :title="ui.chinese"
+          @click="setDisplayLanguage('zh')"
+        >
+          {{ ui.chinese }}
+        </button>
+        <button
+          class="display-language-button"
+          :class="{ active: displayLanguage === 'en' }"
+          type="button"
+          :aria-pressed="displayLanguage === 'en'"
+          :title="ui.english"
+          @click="setDisplayLanguage('en')"
+        >
+          {{ ui.english }}
+        </button>
       </div>
-      <button class="settings-button" type="button" aria-label="打开设置" @click="openOptions">
-        ⚙
+      <button
+        class="settings-button"
+        type="button"
+        :aria-label="ui.openSettings"
+        :title="ui.openSettings"
+        @click="openOptions"
+      >
+        <span aria-hidden="true">⚙</span>
       </button>
     </header>
 
-    <section class="language-pair" aria-label="语言方向">
-      <select
-        :value="sourceLanguage"
-        class="language-select"
-        aria-label="源语言"
-        @change="setSourceLanguage(($event.target as HTMLSelectElement).value)"
-      >
-        <option value="auto">自动检测</option>
-        <option
-          v-for="language in supportedLanguages"
-          :key="language.code"
-          :value="language.code"
+    <section
+      class="language-switcher"
+      :aria-label="`${ui.sourceLanguage} / ${ui.targetLanguage}`"
+    >
+      <div class="language-side">
+        <span class="language-caption">{{ ui.sourceLanguage }}</span>
+        <select
+          :value="sourceLanguage"
+          class="language-select"
+          :aria-label="ui.sourceLanguage"
+          @change="setSourceLanguage(($event.target as HTMLSelectElement).value)"
         >
-          {{ language.label }}
-        </option>
-      </select>
-      <span aria-hidden="true">→</span>
-      <select
-        v-if="sourceLanguage !== 'auto'"
-        :value="targetLanguage"
-        class="language-select"
-        aria-label="目标语言"
-        @change="setTargetLanguage(($event.target as HTMLSelectElement).value)"
-      >
-        <option
-          v-for="language in availableTargetLanguages"
-          :key="language"
-          :value="language"
-        >
-          {{ languageLabel(language) }}
-        </option>
-      </select>
-      <span v-else class="language-auto-target">
-        {{ detectedLanguage === null ? '自动选择' : languageLabel(getDefaultTargetLanguage(detectedLanguage)) }}
-      </span>
+          <option value="auto">{{ ui.autoDetect }}</option>
+          <option
+            v-for="language in supportedLanguages"
+            :key="language.code"
+            :value="language.code"
+          >
+            {{ languageLabelForDisplay(language.code, displayLanguage) }}
+          </option>
+        </select>
+      </div>
       <button
-        v-if="
-          sourceLanguage !== 'auto' &&
-          isSupportedTranslationPair(targetLanguage, sourceLanguage)
-        "
+        v-if="sourceLanguage !== 'auto' && isSupportedTranslationPair(targetLanguage, sourceLanguage)"
         class="language-swap"
         type="button"
-        aria-label="交换语言方向"
+        :aria-label="ui.swapLanguages"
+        :title="ui.swapLanguages"
         @click="swapLanguages"
       >
-        ↔
+        <span aria-hidden="true">↔</span>
       </button>
+      <span v-else class="language-swap-placeholder" aria-hidden="true">→</span>
+      <div class="language-side language-side-target">
+        <span class="language-caption">{{ ui.targetLanguage }}</span>
+        <select
+          :value="targetLanguage"
+          class="language-select"
+          :aria-label="ui.targetLanguage"
+          @change="setTargetLanguage(($event.target as HTMLSelectElement).value)"
+        >
+          <option
+            v-for="language in availableTargetLanguages"
+            :key="language"
+            :value="language"
+          >
+            {{ languageLabelForDisplay(language, displayLanguage) }}
+          </option>
+        </select>
+      </div>
     </section>
 
-    <TranslationInput
-      v-model="inputText"
-      :disabled="status === 'preparing-model' || status === 'translating'"
-      :source-language="sourceLanguage"
-      @translate="translate"
-      @clear="clearInput"
-      @paste="handlePaste"
-    />
+    <section class="translation-surface" :aria-label="ui.translation">
+      <TranslationInput
+        v-model="inputText"
+        :disabled="status === 'preparing-model' || status === 'translating'"
+        :display-language="displayLanguage"
+        @translate="translate"
+        @clear="clearInput"
+        @paste="handlePaste"
+      />
 
-    <TranslationResult
-      :source-text="sourceText"
-      :translated-text="translatedText"
-      :status="status"
-      :progress="progress"
-      :error-message="errorMessage"
-      :copy-label="copyLabel"
-      :favorited="favorited"
-      :text-kind-label="textKindLabel(textKind)"
-      @copy="copyTranslation"
-      @speak="speakSource"
-      @favorite="toggleFavorite"
-      @retry="translate"
-      @cancel="cancelTranslation"
-    />
+      <TranslationResult
+        :source-text="sourceText"
+        :translated-text="translatedText"
+        :status="status"
+        :progress="progress"
+        :error-message="errorMessage"
+        :preparing-label="preparingLabel"
+        :copy-label="copyLabel"
+        :favorited="favorited"
+        :text-kind-label="textKindLabel(textKind)"
+        :display-language="displayLanguage"
+        @copy="copyTranslation"
+        @speak="speakSource"
+        @favorite="toggleFavorite"
+        @retry="translate"
+        @cancel="cancelTranslation"
+      />
+    </section>
 
-    <section class="saved-card" aria-label="历史与收藏">
-      <div class="saved-tabs" role="tablist" aria-label="已保存内容">
-        <button
-          class="saved-tab"
-          :class="{ active: activeSavedTab === 'history' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSavedTab === 'history'"
-          @click="activeSavedTab = 'history'"
-        >
-          历史
-        </button>
-        <button
-          class="saved-tab"
-          :class="{ active: activeSavedTab === 'favorites' }"
-          type="button"
-          role="tab"
-          :aria-selected="activeSavedTab === 'favorites'"
-          @click="activeSavedTab = 'favorites'"
-        >
-          收藏
-        </button>
+    <section
+      class="saved-section"
+      :aria-label="`${ui.recent} / ${ui.favorites}`"
+    >
+      <div class="saved-heading">
+        <h2>{{ activeSavedTab === 'history' ? ui.recent : ui.favorites }}</h2>
+        <div class="saved-tabs" role="tablist" :aria-label="ui.savedContent">
+          <button
+            id="saved-tab-history"
+            class="saved-tab"
+            :class="{ active: activeSavedTab === 'history' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSavedTab === 'history'"
+            aria-controls="saved-panel-history"
+            :tabindex="activeSavedTab === 'history' ? 0 : -1"
+            @click="selectSavedTab('history')"
+            @keydown="handleSavedTabKeydown($event, 'history')"
+          >
+            {{ ui.recent }}
+          </button>
+          <button
+            id="saved-tab-favorites"
+            class="saved-tab"
+            :class="{ active: activeSavedTab === 'favorites' }"
+            type="button"
+            role="tab"
+            :aria-selected="activeSavedTab === 'favorites'"
+            aria-controls="saved-panel-favorites"
+            :tabindex="activeSavedTab === 'favorites' ? 0 : -1"
+            @click="selectSavedTab('favorites')"
+            @keydown="handleSavedTabKeydown($event, 'favorites')"
+          >
+            {{ ui.favorites }}
+          </button>
+        </div>
       </div>
-      <HistoryList
+      <div
         v-if="activeSavedTab === 'history'"
-        :items="historyItems"
-        @select="selectSavedItem"
-      />
-      <FavoriteList
+        id="saved-panel-history"
+        class="saved-panel"
+        role="tabpanel"
+        aria-labelledby="saved-tab-history"
+      >
+        <div class="saved-panel-toolbar">
+          <button
+            class="saved-clear-button"
+            type="button"
+            :disabled="historyItems.length === 0"
+            :aria-label="ui.clearHistory"
+            :title="ui.clearHistory"
+            @click="clearHistory"
+          >
+            {{ ui.clearHistory }}
+          </button>
+        </div>
+        <HistoryList
+          :items="historyItems"
+          :display-language="displayLanguage"
+          @select="selectSavedItem"
+          @delete="deleteHistoryItem"
+        />
+      </div>
+      <div
         v-else
-        :items="favoriteItems"
-        @select="selectSavedItem"
-      />
+        id="saved-panel-favorites"
+        class="saved-panel"
+        role="tabpanel"
+        aria-labelledby="saved-tab-favorites"
+      >
+        <div class="saved-panel-toolbar">
+          <button
+            class="saved-clear-button"
+            type="button"
+            :disabled="favoriteItems.length === 0"
+            :aria-label="ui.clearFavorites"
+            :title="ui.clearFavorites"
+            @click="clearFavorites"
+          >
+            {{ ui.clearFavorites }}
+          </button>
+        </div>
+        <FavoriteList
+          :items="favoriteItems"
+          :display-language="displayLanguage"
+          @select="selectSavedItem"
+          @delete="deleteFavoriteItem"
+        />
+      </div>
     </section>
   </main>
 </template>

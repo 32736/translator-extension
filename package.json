@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
     "typecheck": "vue-tsc --noEmit",
     "zip": "wxt zip",
@@ -15,11 +16,16 @@
     "vue": "^3.5.0"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@types/chrome": "^0.0.300",
     "@wxt-dev/module-vue": "^1.0.0",
+    "eslint": "10.9.1",
+    "eslint-plugin-vue": "10.10.0",
+    "globals": "17.12.0",
     "typescript": "^5.8.0",
-    "vue-tsc": "^2.2.0",
+    "typescript-eslint": "8.69.0",
     "vitest": "^3.2.4",
+    "vue-tsc": "^2.2.0",
     "wxt": "^0.20.0"
   }
 }

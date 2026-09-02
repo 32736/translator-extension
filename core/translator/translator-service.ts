@@ -2,6 +2,7 @@ import type {
   CacheRepository,
   TranslationCacheEntity,
 } from '../storage/cache-repository';
+import { containsMostlyChinese } from '../language/classify';
 import { detectLanguageByScript } from '../language/language-detector';
 import {
   getTranslationPairLabel,
@@ -147,6 +148,16 @@ export class TranslatorService {
       throw new TranslationServiceError({
         code: 'PAIR_UNAVAILABLE',
         message: `当前版本暂不支持${getTranslationPairLabel(request.sourceLanguage, request.targetLanguage)}。`,
+      });
+    }
+
+    if (
+      request.sourceLanguage === 'en' &&
+      containsMostlyChinese(normalizedText)
+    ) {
+      throw new TranslationServiceError({
+        code: 'INVALID_INPUT',
+        message: '当前版本暂不支持将中文作为英文输入。',
       });
     }
 

@@ -34,6 +34,10 @@ export type RuntimeMessage =
       payload: { entity: HistoryEntity };
     }
   | {
+      type: 'DELETE_TRANSLATION_HISTORY';
+      payload: { id: string };
+    }
+  | {
       type: 'GET_TRANSLATION_HISTORY';
       payload: { limit?: number };
     }
@@ -140,6 +144,12 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
       return (
         isRecord(value.payload) &&
         isHistoryEntity(value.payload.entity)
+      );
+    case 'DELETE_TRANSLATION_HISTORY':
+      return (
+        isRecord(value.payload) &&
+        typeof value.payload.id === 'string' &&
+        value.payload.id.length > 0
       );
     case 'GET_TRANSLATION_HISTORY':
       return (

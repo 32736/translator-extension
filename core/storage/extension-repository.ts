@@ -72,6 +72,13 @@ export class ExtensionHistoryRepository implements HistoryRepository {
     });
   }
 
+  async remove(id: string): Promise<void> {
+    await sendStorageRequest({
+      type: 'DELETE_TRANSLATION_HISTORY',
+      payload: { id },
+    });
+  }
+
   async list(limit = 30): Promise<HistoryEntity[]> {
     const response = await sendStorageRequest({
       type: 'GET_TRANSLATION_HISTORY',

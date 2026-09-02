@@ -8,7 +8,7 @@ export interface TranslatorWindowState {
 
 const WINDOW_STATE_KEY = 'translatorWindow';
 const DEFAULT_BOUNDS = {
-  width: 460,
+  width: 440,
   height: 680,
 } as const;
 const BOUNDS_SAVE_DEBOUNCE_MS = 300;

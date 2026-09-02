@@ -75,13 +75,12 @@ export function isSupportedTranslationPair(
 }
 
 export function getTargetLanguages(
-  sourceLanguage: SourceLanguage,
+  _sourceLanguage: SourceLanguage,
 ): readonly TargetLanguage[] {
-  return SUPPORTED_LANGUAGES
-    .map((language) => language.code)
-    .filter((targetLanguage): targetLanguage is TargetLanguage =>
-      isSupportedTranslationPair(sourceLanguage, targetLanguage),
-    );
+  // The target selector intentionally exposes the same concrete language set
+  // as the source selector. Translation-pair validation remains centralized in
+  // TranslatorService so unsupported combinations can show a useful error.
+  return SUPPORTED_LANGUAGES.map((language) => language.code);
 }
 
 export function getTranslationPairLabel(

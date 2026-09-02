@@ -8,6 +8,7 @@
   --text: #161616;
   --text-secondary: #707070;
   --border: #e7e7e7;
+  --focus: #2f58cf;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -19,6 +20,7 @@
     --text: #f4f4f4;
     --text-secondary: #a4a4a4;
     --border: #343434;
+    --focus: #a9bcff;
   }
 }
 
@@ -41,6 +43,12 @@ input {
 
 button {
   cursor: pointer;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .settings-shell {
@@ -119,6 +127,26 @@ h2 {
   padding-top: 18px;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+:root.theme-light {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --text: #161616;
+  --text-secondary: #707070;
+  --border: #e7e7e7;
+  --focus: #2f58cf;
+}
+
+:root.theme-dark {
+  color-scheme: dark;
+  --bg: #171717;
+  --surface: #222222;
+  --text: #f4f4f4;
+  --text-secondary: #a4a4a4;
+  --border: #343434;
+  --focus: #a9bcff;
 }
 
 .settings-note {

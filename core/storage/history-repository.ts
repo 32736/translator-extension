@@ -19,6 +19,7 @@ export interface HistoryEntity {
 
 export interface HistoryRepository {
   save(entity: HistoryEntity): Promise<void>;
+  remove(id: string): Promise<void>;
   list(limit?: number): Promise<HistoryEntity[]>;
   clear(): Promise<void>;
 }
@@ -32,6 +33,7 @@ export class IndexedDbHistoryRepository implements HistoryRepository {
     const duplicate = recent.find(
       (item) =>
         item.sourceText === entity.sourceText &&
+        item.sourceLanguage === entity.sourceLanguage &&
         item.targetLanguage === entity.targetLanguage &&
         entity.createdAt - item.createdAt <= RECENT_DUPLICATE_WINDOW_MS,
     );
@@ -44,6 +46,13 @@ export class IndexedDbHistoryRepository implements HistoryRepository {
     await requestToPromise(transaction.objectStore(STORE_NAMES.history).put(entityToSave));
     await transactionToPromise(transaction);
     await this.prune();
+  }
+
+  async remove(id: string): Promise<void> {
+    const database = await openTranslatorDatabase();
+    const transaction = database.transaction(STORE_NAMES.history, 'readwrite');
+    await requestToPromise(transaction.objectStore(STORE_NAMES.history).delete(id));
+    await transactionToPromise(transaction);
   }
 
   async list(limit = 30): Promise<HistoryEntity[]> {

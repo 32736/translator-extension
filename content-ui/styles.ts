@@ -30,6 +30,12 @@ button {
   background: #f0f0f0;
 }
 
+.trigger:focus-visible,
+.popover button:focus-visible {
+  outline: 2px solid #315bdc;
+  outline-offset: 2px;
+}
+
 .popover {
   position: fixed;
   z-index: 1;
@@ -152,6 +158,25 @@ button {
 
   .popover-source {
     border-color: #343434;
+    color: #c0c6cc;
+  }
+
+  .popover-status {
+    color: #c0c6cc;
+  }
+
+  .popover[data-status="error"] .popover-status {
+    color: #ff9b9b;
+  }
+
+  .popover-close,
+  .popover-cancel {
+    color: #c0c6cc !important;
+  }
+
+  .trigger:focus-visible,
+  .popover button:focus-visible {
+    outline-color: #a9bcff;
   }
 
   .popover button {

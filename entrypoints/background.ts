@@ -86,6 +86,9 @@ function handleStorageMessage(
       case 'SAVE_TRANSLATION_HISTORY':
         await historyRepository.save(message.payload.entity);
         return { ok: true, kind: 'ack' };
+      case 'DELETE_TRANSLATION_HISTORY':
+        await historyRepository.remove(message.payload.id);
+        return { ok: true, kind: 'ack' };
       case 'GET_TRANSLATION_HISTORY':
         return {
           ok: true,
@@ -194,6 +197,7 @@ export default defineBackground(() => {
         message.type === 'SAVE_TRANSLATION_CACHE' ||
         message.type === 'CLEAR_TRANSLATION_CACHE' ||
         message.type === 'SAVE_TRANSLATION_HISTORY' ||
+        message.type === 'DELETE_TRANSLATION_HISTORY' ||
         message.type === 'GET_TRANSLATION_HISTORY' ||
         message.type === 'CLEAR_TRANSLATION_HISTORY')
     ) {

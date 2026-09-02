@@ -16,8 +16,17 @@ const cacheRepository = new IndexedDbCacheRepository();
 const historyRepository = new IndexedDbHistoryRepository();
 const favoriteRepository = new IndexedDbFavoriteRepository();
 
+function applyTheme(theme: Settings['theme']): void {
+  document.documentElement.classList.remove('theme-light', 'theme-dark');
+
+  if (theme !== 'system') {
+    document.documentElement.classList.add(`theme-${theme}`);
+  }
+}
+
 async function updateTheme(): Promise<void> {
   settings.value = await saveSettings({ theme: settings.value.theme });
+  applyTheme(settings.value.theme);
   statusMessage.value = '主题设置已保存。';
 }
 
@@ -50,6 +59,7 @@ function openShortcuts(): void {
 onMounted(() => {
   void loadSettings().then((loadedSettings) => {
     settings.value = loadedSettings;
+    applyTheme(loadedSettings.theme);
   });
 });
 </script>

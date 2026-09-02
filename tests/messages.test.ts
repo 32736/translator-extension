@@ -45,6 +45,12 @@ describe('runtime message validation', () => {
         payload: { entity: historyEntity },
       }),
     ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: 'DELETE_TRANSLATION_HISTORY',
+        payload: { id: 'history-id' },
+      }),
+    ).toBe(true);
   });
 
   it('rejects malformed or unsupported messages', () => {

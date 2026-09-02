@@ -20,6 +20,7 @@ type PopoverStatus =
   | 'error';
 
 export class TranslationPopoverController {
+  private readonly shadow: ShadowRoot;
   private readonly popover: HTMLElement;
   private readonly sourceElement: HTMLElement;
   private readonly outputElement: HTMLElement;
@@ -30,13 +31,16 @@ export class TranslationPopoverController {
   private readonly speakButton: HTMLButtonElement;
   private readonly cancelButton: HTMLButtonElement;
   private readonly closeButton: HTMLButtonElement;
+  private readonly retryButton: HTMLButtonElement;
   private readonly openButton: HTMLButtonElement;
   private readonly service: TranslatorService;
   private readonly languageDetector: ChromeLanguageDetector;
   private readonly onOpenTranslator: (text: string) => void;
   private sourceLanguage: SourceLanguage = 'en';
+  private lastDetails: SelectionDetails | null = null;
   private currentAbortController: AbortController | null = null;
   private requestSequence = 0;
+  private previouslyFocusedElement: HTMLElement | null = null;
 
   constructor(
     shadow: ShadowRoot,
@@ -44,19 +48,21 @@ export class TranslationPopoverController {
     onOpenTranslator: (text: string) => void,
     languageDetector = new ChromeLanguageDetector(),
   ) {
+    this.shadow = shadow;
     this.service = service;
     this.languageDetector = languageDetector;
     this.onOpenTranslator = onOpenTranslator;
     this.popover = document.createElement('section');
     this.popover.className = 'popover';
     this.popover.setAttribute('role', 'dialog');
-    this.popover.setAttribute('aria-label', '翻译结果');
     this.popover.hidden = true;
 
     const header = document.createElement('div');
     header.className = 'popover-header';
     const title = document.createElement('strong');
+    title.id = 'popover-title';
     title.textContent = '翻译';
+    this.popover.setAttribute('aria-labelledby', title.id);
     this.cancelButton = this.createButton('取消', 'popover-cancel');
     this.closeButton = this.createButton('关闭', 'popover-close');
     header.append(title, this.cancelButton, this.closeButton);
@@ -67,6 +73,10 @@ export class TranslationPopoverController {
     this.outputElement.className = 'popover-output';
     this.statusElement = document.createElement('div');
     this.statusElement.className = 'popover-status';
+    this.statusElement.setAttribute('role', 'status');
+    this.statusElement.setAttribute('aria-live', 'polite');
+    this.statusElement.setAttribute('aria-atomic', 'true');
+    this.outputElement.setAttribute('aria-live', 'polite');
 
     this.progressElement = document.createElement('div');
     this.progressElement.className = 'popover-progress';
@@ -79,8 +89,14 @@ export class TranslationPopoverController {
     actions.className = 'popover-actions';
     this.speakButton = this.createButton('🔊 发音', 'popover-action');
     this.copyButton = this.createButton('复制', 'popover-action');
+    this.retryButton = this.createButton('重试', 'popover-action');
     this.openButton = this.createButton('↗ 打开', 'popover-action');
-    actions.append(this.speakButton, this.copyButton, this.openButton);
+    actions.append(
+      this.speakButton,
+      this.copyButton,
+      this.retryButton,
+      this.openButton,
+    );
 
     this.popover.append(
       header,
@@ -96,6 +112,7 @@ export class TranslationPopoverController {
     this.closeButton.addEventListener('click', this.hide);
     this.copyButton.addEventListener('click', this.copy);
     this.speakButton.addEventListener('click', this.speak);
+    this.retryButton.addEventListener('click', this.retry);
     this.openButton.addEventListener('click', this.openTranslator);
     document.addEventListener('mousedown', this.handleDocumentMouseDown, true);
     document.addEventListener('keydown', this.handleKeyDown, true);
@@ -105,8 +122,16 @@ export class TranslationPopoverController {
   }
 
   async open(details: SelectionDetails): Promise<void> {
+    if (this.popover.hidden) {
+      const focusedElement = this.shadow.activeElement;
+      this.previouslyFocusedElement =
+        focusedElement instanceof HTMLElement ? focusedElement : null;
+    }
+
     this.currentAbortController?.abort();
     const requestId = ++this.requestSequence;
+    this.lastDetails = details;
+    this.sourceLanguage = 'en';
     const text = normalizeText(details.text);
     this.sourceElement.textContent = text;
     this.outputElement.textContent = '';
@@ -114,10 +139,12 @@ export class TranslationPopoverController {
     this.progressElement.hidden = true;
     this.copyButton.hidden = true;
     this.speakButton.hidden = true;
+    this.retryButton.hidden = true;
     this.openButton.hidden = true;
     this.cancelButton.hidden = false;
     this.popover.hidden = false;
     this.position(details.rect);
+    this.closeButton.focus({ preventScroll: true });
 
     if (details.tooLong) {
       this.setStatus('error', '当前版本仅支持短文本翻译。');
@@ -131,6 +158,7 @@ export class TranslationPopoverController {
 
     try {
       const detectedLanguage = await this.languageDetector.detect(text, {
+        signal: abortController.signal,
         onDownloadProgress: (downloadProgress) => {
           if (requestId === this.requestSequence) {
             this.setStatus('preparing-model', '正在准备本地语言识别模型');
@@ -145,7 +173,18 @@ export class TranslationPopoverController {
         return;
       }
 
-      const sourceLanguage: SourceLanguage = detectedLanguage ?? 'en';
+      if (detectedLanguage === null) {
+        this.setStatus(
+          'error',
+          '无法识别输入语言，请在独立翻译窗口中手动选择源语言。',
+        );
+        this.cancelButton.hidden = true;
+        this.retryButton.hidden = false;
+        this.openButton.hidden = false;
+        return;
+      }
+
+      const sourceLanguage: SourceLanguage = detectedLanguage;
       const targetLanguage: TargetLanguage =
         getDefaultTargetLanguage(sourceLanguage);
       this.sourceLanguage = sourceLanguage;
@@ -198,6 +237,15 @@ export class TranslationPopoverController {
         return;
       }
 
+      if (
+        abortController.signal.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        (error instanceof Error && error.name === 'AbortError')
+      ) {
+        this.hide();
+        return;
+      }
+
       this.setStatus(
         'error',
         error instanceof TranslationServiceError
@@ -205,6 +253,7 @@ export class TranslationPopoverController {
           : '翻译失败，请重试。',
       );
       this.cancelButton.hidden = true;
+      this.retryButton.hidden = false;
     } finally {
       if (requestId === this.requestSequence) {
         this.currentAbortController = null;
@@ -217,6 +266,17 @@ export class TranslationPopoverController {
     this.currentAbortController = null;
     this.requestSequence += 1;
     this.popover.hidden = true;
+
+    const previouslyFocusedElement = this.previouslyFocusedElement;
+    this.previouslyFocusedElement = null;
+
+    if (
+      previouslyFocusedElement !== null &&
+      previouslyFocusedElement.isConnected &&
+      !previouslyFocusedElement.hidden
+    ) {
+      previouslyFocusedElement.focus({ preventScroll: true });
+    }
   };
 
   destroy(): void {
@@ -225,6 +285,7 @@ export class TranslationPopoverController {
     this.closeButton.removeEventListener('click', this.hide);
     this.copyButton.removeEventListener('click', this.copy);
     this.speakButton.removeEventListener('click', this.speak);
+    this.retryButton.removeEventListener('click', this.retry);
     this.openButton.removeEventListener('click', this.openTranslator);
     document.removeEventListener('mousedown', this.handleDocumentMouseDown, true);
     document.removeEventListener('keydown', this.handleKeyDown, true);
@@ -237,6 +298,12 @@ export class TranslationPopoverController {
 
   private readonly cancel = (): void => {
     this.currentAbortController?.abort();
+  };
+
+  private readonly retry = (): void => {
+    if (this.lastDetails !== null) {
+      void this.open(this.lastDetails);
+    }
   };
 
   private readonly copy = (): void => {
@@ -322,6 +389,11 @@ export class TranslationPopoverController {
 
   private setStatus(status: PopoverStatus, message: string): void {
     this.popover.dataset.status = status;
+    this.statusElement.setAttribute('role', status === 'error' ? 'alert' : 'status');
+    this.statusElement.setAttribute(
+      'aria-live',
+      status === 'error' ? 'assertive' : 'polite',
+    );
     this.statusElement.textContent = message;
     this.progressElement.hidden = status !== 'preparing-model';
   }

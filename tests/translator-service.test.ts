@@ -47,6 +47,14 @@ class MemoryHistoryRepository implements HistoryRepository {
     this.entries.push(entity);
   }
 
+  async remove(id: string): Promise<void> {
+    const index = this.entries.findIndex((entity) => entity.id === id);
+
+    if (index >= 0) {
+      this.entries.splice(index, 1);
+    }
+  }
+
   async list(): Promise<HistoryEntity[]> {
     return [...this.entries];
   }
@@ -154,6 +162,19 @@ describe('TranslatorService', () => {
     expect(japaneseResult.translatedText).toBe('你好');
     expect(koreanResult.translatedText).toBe('你好');
     expect(provider.calls).toBe(2);
+  });
+
+  it('allows ambiguous Han-only text when Japanese is selected manually', async () => {
+    const provider = new StubProvider('available', '汉字');
+    const { service } = createService(provider);
+
+    const result = await service.translate({
+      ...createRequest('漢字', 'request-ja-kanji'),
+      sourceLanguage: 'ja',
+      targetLanguage: 'zh',
+    });
+
+    expect(result.translatedText).toBe('汉字');
   });
 
   it('rejects translation pairs outside the current V0.3 scope', async () => {

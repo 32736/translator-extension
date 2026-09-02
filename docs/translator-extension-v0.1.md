@@ -791,7 +791,7 @@ core/window/translator-window.ts
 
 ```ts
 const DEFAULT_BOUNDS = {
-  width: 460,
+  width: 440,
   height: 680,
 };
 ```
@@ -824,7 +824,7 @@ export async function ensureTranslatorWindow(): Promise<number> {
     url: chrome.runtime.getURL('/translator.html'),
     type: 'popup',
     focused: true,
-    width: state.width ?? 460,
+    width: state.width ?? 440,
     height: state.height ?? 680,
     left: state.left,
     top: state.top,
@@ -908,6 +908,10 @@ Bounds 写入建议 debounce 200~500ms。
 7. 消息协调
 8. 窗口状态
 ```
+
+Content Script 不直接访问扩展页面的 IndexedDB；当前实现通过 Background
+提供缓存和历史的本地存储消息桥接。该桥接只读写本地 IndexedDB，不执行
+Translator API，也不上传用户文本。
 
 禁止：
 
@@ -1018,7 +1022,9 @@ export type RuntimeMessage =
     };
 ```
 
-以上展示跨页面通信的核心消息；缓存、历史记录和收藏的读写消息也复用同一套 RuntimeMessage 类型定义。
+以上展示跨页面通信的核心消息；当前实现将缓存和历史读写也纳入同一套
+RuntimeMessage 类型定义。收藏只在扩展翻译窗口和设置页使用 IndexedDB，
+因为 Content Script 没有收藏操作，不额外增加收藏消息。
 
 ---
 
@@ -1049,9 +1055,9 @@ Background
 ↓
 translator 页面 mount
 ↓
-读取 pendingTranslation
+translator 页面发送 READY，Background 将 pendingTranslation 发送给页面
 ↓
-消费并删除
+Background 在发送成功后消费并删除
 ```
 
 pending 数据可存：
@@ -1520,6 +1526,14 @@ export function classifyText(text: string) {
 
 当前支持的语言和语言对由 `core/translator/languages.ts` 统一定义：
 
+源语言和目标语言选择器使用同一组具体语言：
+
+```text
+en / zh / ja / ko
+```
+
+源语言额外支持 `auto` 自动检测。目标语言不显示 `auto`。选择器展示完整语言集合，实际不可用的语言对仍由翻译服务校验并显示明确错误。
+
 ```text
 en -> zh
 zh -> en
@@ -1531,7 +1545,8 @@ ko -> zh
 
 - 手动选择源语言和目标语言；
 - 自动检测源语言；
-- 自动检测时根据识别结果选择默认目标语言；
+- 源语言默认是 `auto` 自动检测，目标语言默认是中文（`zh`）；
+- 自动检测只解析源语言，不自动修改用户选择的目标语言；
 - 仅允许当前支持的语言对，禁止相同语言互译或未定义语言对。
 
 语言识别采用本地文字特征规则优先；无法直接判断时，使用 Chrome Language Detector API 作为兜底。网页划词默认交给独立窗口自动检测语言。

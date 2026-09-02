@@ -1,4 +1,4 @@
-interface BuiltInAiCreateMonitor extends EventTarget {}
+type BuiltInAiCreateMonitor = EventTarget;
 
 interface BuiltInAiTranslatorCreateOptions {
   sourceLanguage: string;
@@ -31,11 +31,16 @@ interface BuiltInAiLanguageDetectorResult {
 }
 
 interface BuiltInAiLanguageDetector {
-  detect(text: string): Promise<BuiltInAiLanguageDetectorResult[]>;
+  detect(
+    text: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<BuiltInAiLanguageDetectorResult[]>;
   destroy?(): void;
 }
 
 interface BuiltInAiLanguageDetectorCreateOptions {
+  expectedInputLanguages?: string[];
+  signal?: AbortSignal;
   monitor?: (monitor: BuiltInAiCreateMonitor) => void;
 }
 
