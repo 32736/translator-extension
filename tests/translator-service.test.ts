@@ -164,6 +164,37 @@ describe('TranslatorService', () => {
     expect(provider.calls).toBe(2);
   });
 
+  it('supports the first expanded languages to and from Chinese', async () => {
+    const provider = new StubProvider('available', '你好');
+    const { service } = createService(provider);
+
+    const expandedResults = await Promise.all([
+      service.translate({
+        ...createRequest('¿Cómo estás?', 'request-es'),
+        sourceLanguage: 'es',
+        targetLanguage: 'zh',
+      }),
+      service.translate({
+        ...createRequest('français', 'request-fr'),
+        sourceLanguage: 'fr',
+        targetLanguage: 'zh',
+      }),
+      service.translate({
+        ...createRequest('Grüße aus Berlin', 'request-de'),
+        sourceLanguage: 'de',
+        targetLanguage: 'zh',
+      }),
+      service.translate({
+        ...createRequest('你好', 'request-zh-es'),
+        sourceLanguage: 'zh',
+        targetLanguage: 'es',
+      }),
+    ]);
+
+    expect(expandedResults).toHaveLength(4);
+    expect(provider.calls).toBe(4);
+  });
+
   it('allows ambiguous Han-only text when Japanese is selected manually', async () => {
     const provider = new StubProvider('available', '汉字');
     const { service } = createService(provider);
@@ -177,7 +208,7 @@ describe('TranslatorService', () => {
     expect(result.translatedText).toBe('汉字');
   });
 
-  it('rejects translation pairs outside the current V0.3 scope', async () => {
+  it('allows distinct catalog languages and delegates pair availability to the provider', async () => {
     const { service } = createService(new StubProvider());
 
     await expect(
@@ -186,8 +217,9 @@ describe('TranslatorService', () => {
         sourceLanguage: 'en',
         targetLanguage: 'ja',
       }),
-    ).rejects.toMatchObject({
-      details: { code: 'PAIR_UNAVAILABLE' },
+    ).resolves.toMatchObject({
+      sourceLanguage: 'en',
+      targetLanguage: 'ja',
     });
   });
 

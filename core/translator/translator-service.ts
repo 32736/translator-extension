@@ -152,12 +152,14 @@ export class TranslatorService {
     }
 
     if (
-      request.sourceLanguage === 'en' &&
-      containsMostlyChinese(normalizedText)
+      containsMostlyChinese(normalizedText) &&
+      request.sourceLanguage !== 'zh' &&
+      request.sourceLanguage !== 'zh-Hant' &&
+      request.sourceLanguage !== 'ja'
     ) {
       throw new TranslationServiceError({
         code: 'INVALID_INPUT',
-        message: '当前版本暂不支持将中文作为英文输入。',
+        message: `当前方向为 ${getTranslationPairLabel(request.sourceLanguage, request.targetLanguage)}，请输入${languageLabel(request.sourceLanguage)}内容。`,
       });
     }
 

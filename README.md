@@ -24,8 +24,9 @@
 - [ ] V0.2：本地英汉词典（暂缓）
 - [x] V0.3：日语/韩语 → 简体中文
 - [x] V0.3：语言目录与语言对校验
+- [x] V0.4：接入 Chrome Translator API 官方语言目录
 
-说明：Chrome Stable 已实机验证独立窗口、网页划词、首次语言包下载进度以及日语/韩语翻译；词典、更多语言和其它产品功能不在当前计划内。当前支持英文 ↔ 简体中文、日语 → 简体中文、韩语 → 简体中文，自动识别覆盖英文、中文、日文和韩文的明显文本。当前版本只使用 Chrome 内置 Translator API，不提供第三方 API、Responses API 或多 Provider 配置功能；后续仅修复和完善现有本地翻译能力。
+说明：当前语言目录覆盖 Chrome Translator API 官方支持的全部语言，界面语言、源语言和目标语言均直接使用同一组数据；源语言仅在界面层额外提供“自动检测”。39 个目录语言均有对应的界面本地化文案。翻译对的最终可用性由 Chrome `Translator.availability()` 和设备语言模型决定。词典和其它产品功能暂不开放。当前版本只使用 Chrome 内置 Translator API，不提供第三方 API、Responses API 或多 Provider 配置功能。
 
 完整范围与后续边界见：[技术实施文档](D:/Codes/FQG/translator-extension/docs/translator-extension-v0.1.md)。
 

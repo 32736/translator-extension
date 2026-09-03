@@ -461,6 +461,18 @@ textarea::placeholder {
   color: var(--danger);
 }
 
+.language-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--gap-xs);
+  margin-top: var(--gap-sm);
+}
+
+.candidate-button {
+  min-height: 28px;
+  font-size: 0.75rem;
+}
+
 .download-progress {
   display: flex;
   flex-direction: column;

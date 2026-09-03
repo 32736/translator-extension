@@ -3,8 +3,10 @@ import { computed } from 'vue';
 import TranslationStatus from './TranslationStatus.vue';
 import {
   getUiCopy,
+  languageLabelForDisplay,
   type DisplayLanguage,
 } from '../core/i18n/ui';
+import type { SupportedLanguage } from '../core/translator/types';
 
 const props = defineProps<{
   translatedText: string;
@@ -14,6 +16,7 @@ const props = defineProps<{
   preparingLabel: string;
   copyLabel: string;
   favorited: boolean;
+  languageCandidates: readonly SupportedLanguage[];
   displayLanguage: DisplayLanguage;
 }>();
 
@@ -25,6 +28,7 @@ const emit = defineEmits<{
   retry: [];
   cancel: [];
   favorite: [];
+  'select-language': [language: SupportedLanguage];
 }>();
 </script>
 
@@ -49,6 +53,21 @@ const emit = defineEmits<{
         :preparing-label="preparingLabel"
         :display-language="displayLanguage"
       />
+      <div
+        v-if="status === 'error' && languageCandidates.length > 0"
+        class="language-candidates"
+        :aria-label="copy.cannotDetectLanguage"
+      >
+        <button
+          v-for="language in languageCandidates"
+          :key="language"
+          class="secondary-button candidate-button"
+          type="button"
+          @click="emit('select-language', language)"
+        >
+          {{ languageLabelForDisplay(language, displayLanguage) }}
+        </button>
+      </div>
     </div>
 
     <div class="panel-footer result-actions">

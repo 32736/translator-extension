@@ -36,6 +36,7 @@ import {
 import {
   isSupportedLanguage,
   isSupportedTranslationPair,
+  languageHtmlLocale,
   languageSpeechLocale,
   SUPPORTED_LANGUAGES,
 } from '../../core/translator/languages';
@@ -46,6 +47,7 @@ import type {
 } from '../../core/translator/translation-types';
 import type {
   SourceLanguage,
+  SupportedLanguage,
   TargetLanguage,
 } from '../../core/translator/types';
 import {
@@ -93,10 +95,12 @@ const favorited = ref(false);
 const activeSavedTab = ref<SavedTab>('history');
 const historyItems = ref<HistoryEntity[]>([]);
 const favoriteItems = ref<FavoriteEntity[]>([]);
+const languageCandidates = ref<SupportedLanguage[]>([]);
 const sourceLanguage = ref<SourceLanguage | 'auto'>('auto');
 const targetLanguage = ref<TargetLanguage>('zh');
 const detectedLanguage = ref<SourceLanguage | null>(null);
 const supportedLanguages = SUPPORTED_LANGUAGES;
+const displayLanguages = SUPPORTED_LANGUAGES;
 const availableTargetLanguages: readonly TargetLanguage[] =
   SUPPORTED_LANGUAGES.map((language) => language.code);
 const sourceSpeechLanguage = computed<SourceLanguage | null>(() => {
@@ -203,6 +207,7 @@ function clearTranslationState(): void {
   progress.value = 0;
   preparingState.value = 'translation';
   favorited.value = false;
+  languageCandidates.value = [];
 }
 
 function setSourceLanguage(value: string): void {
@@ -257,18 +262,13 @@ function applyTheme(theme: Settings['theme']): void {
 }
 
 function applyDisplayLanguage(language: DisplayLanguage): void {
-  document.documentElement.lang = {
-    zh: 'zh-CN',
-    en: 'en',
-    ja: 'ja',
-    ko: 'ko',
-  }[language];
+  document.documentElement.lang = languageHtmlLocale(language);
 }
 
 function getTargetLanguageForDisplay(
   language: DisplayLanguage,
 ): TargetLanguage {
-  return language === 'en' ? 'en' : 'zh';
+  return language;
 }
 
 function openOptions(): void {
@@ -405,6 +405,7 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
   sourceText.value = text;
   status.value = 'preparing-model';
   progress.value = 0;
+  languageCandidates.value = [];
   preparingState.value = 'translation';
   if (sourceLanguage.value === 'auto') {
     detectedLanguage.value = null;
@@ -415,7 +416,7 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
     let resolvedTargetLanguage: TargetLanguage;
 
     if (sourceLanguage.value === 'auto') {
-      const detected = await languageDetector.detect(text, {
+      const detection = await languageDetector.detectWithCandidates(text, {
         onDownloadProgress: (downloadProgress) => {
           if (isCurrentRequest(requestId)) {
             status.value = 'preparing-model';
@@ -429,14 +430,17 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
         return;
       }
 
-      if (detected === null) {
+      if (detection.language === null) {
+        languageCandidates.value = detection.candidates
+          .slice(0, 3)
+          .map((candidate) => candidate.language);
         status.value = 'error';
         errorMessage.value = ui.value.cannotDetectLanguage;
         return;
       }
 
-      detectedLanguage.value = detected;
-      resolvedSourceLanguage = detected;
+      detectedLanguage.value = detection.language;
+      resolvedSourceLanguage = detection.language;
       resolvedTargetLanguage = targetLanguage.value;
     } else {
       resolvedSourceLanguage = sourceLanguage.value;
@@ -520,10 +524,18 @@ function clearInput(): void {
   progress.value = 0;
   favorited.value = false;
   detectedLanguage.value = null;
+  languageCandidates.value = [];
 }
 
 function cancelTranslation(): void {
   currentAbortController?.abort();
+}
+
+function useLanguageCandidate(language: SupportedLanguage): void {
+  sourceLanguage.value = language;
+  detectedLanguage.value = language;
+  languageCandidates.value = [];
+  void translate('window');
 }
 
 async function toggleFavorite(): Promise<void> {
@@ -718,10 +730,13 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
         :aria-label="ui.displayLanguage"
         @change="handleDisplayLanguageChange(($event.target as HTMLSelectElement).value)"
       >
-        <option value="zh">{{ ui.chinese }}</option>
-        <option value="en">{{ ui.english }}</option>
-        <option value="ja">{{ ui.japanese }}</option>
-        <option value="ko">{{ ui.korean }}</option>
+        <option
+          v-for="language in displayLanguages"
+          :key="language.code"
+          :value="language.code"
+        >
+          {{ languageLabelForDisplay(language.code, displayLanguage) }}
+        </option>
       </select>
       <button
         class="settings-button"
@@ -805,12 +820,14 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
         :preparing-label="preparingLabel"
         :copy-label="copyLabel"
         :favorited="favorited"
+        :language-candidates="languageCandidates"
         :display-language="displayLanguage"
         @copy="copyTranslation"
         @speak="speakTranslation"
         @favorite="toggleFavorite"
         @retry="translate"
         @cancel="cancelTranslation"
+        @select-language="useLanguageCandidate"
       />
     </section>
 

@@ -13,6 +13,7 @@ import {
 import { IndexedDbCacheRepository } from '../../core/storage/cache-repository';
 import { IndexedDbFavoriteRepository } from '../../core/storage/favorite-repository';
 import { IndexedDbHistoryRepository } from '../../core/storage/history-repository';
+import { languageHtmlLocale } from '../../core/translator/languages';
 
 const settings = ref<Settings>(DEFAULT_SETTINGS);
 const statusMessage = ref('');
@@ -63,12 +64,7 @@ function openShortcuts(): void {
 }
 
 function applyDisplayLanguage(language: DisplayLanguage): void {
-  document.documentElement.lang = {
-    zh: 'zh-CN',
-    en: 'en',
-    ja: 'ja',
-    ko: 'ko',
-  }[language];
+  document.documentElement.lang = languageHtmlLocale(language);
 }
 
 onMounted(() => {

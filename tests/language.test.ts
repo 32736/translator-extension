@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyText, containsMostlyChinese } from '../core/language/classify';
 import {
   getTargetLanguages,
+  isInterfaceLanguage,
   SUPPORTED_LANGUAGES,
 } from '../core/translator/languages';
 
@@ -26,5 +27,54 @@ describe('text classification', () => {
     expect(getTargetLanguages('zh')).toEqual(supportedLanguageCodes);
     expect(getTargetLanguages('ja')).toEqual(supportedLanguageCodes);
     expect(getTargetLanguages('ko')).toEqual(supportedLanguageCodes);
+    expect(getTargetLanguages('es')).toEqual(supportedLanguageCodes);
+    expect(getTargetLanguages('fr')).toEqual(supportedLanguageCodes);
+    expect(getTargetLanguages('de')).toEqual(supportedLanguageCodes);
+    expect(getTargetLanguages('zh-Hant')).toEqual(supportedLanguageCodes);
+    expect(supportedLanguageCodes).toEqual([
+      'ar',
+      'bg',
+      'bn',
+      'cs',
+      'da',
+      'de',
+      'el',
+      'en',
+      'es',
+      'fi',
+      'fr',
+      'he',
+      'hi',
+      'hr',
+      'hu',
+      'id',
+      'it',
+      'ja',
+      'kn',
+      'ko',
+      'lt',
+      'mr',
+      'nl',
+      'no',
+      'pl',
+      'pt',
+      'ro',
+      'ru',
+      'sk',
+      'sl',
+      'sv',
+      'ta',
+      'te',
+      'th',
+      'tr',
+      'uk',
+      'vi',
+      'zh',
+      'zh-Hant',
+    ]);
+    expect(SUPPORTED_LANGUAGES.every((language) => isInterfaceLanguage(language.code))).toBe(true);
+    expect(
+      SUPPORTED_LANGUAGES.every((language) => language.nativeLabel.length > 0),
+    ).toBe(true);
   });
 });

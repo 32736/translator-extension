@@ -1,4 +1,4 @@
-# 本地优先浏览器翻译插件当前实现与维护边界（V0.3）
+# 本地优先浏览器翻译插件当前实现与维护边界（V0.4）
 
 > 面向 AI Coding Agent 的直接实施文档  
 > 目标平台：Chrome Desktop 138+，优先 Windows 11；后续兼容 Edge  
@@ -8,9 +8,9 @@
 
 ### 当前范围说明
 
-V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、设置和 Chrome 内置翻译已完成；V0.2 已完成英中双向翻译与自动语言识别；V0.3 已完成日语/韩语到中文翻译。
+V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、设置和 Chrome 内置翻译已完成；V0.2 已完成英中双向翻译与自动语言识别；V0.3 已完成日语/韩语到中文翻译；V0.4 已接入 Chrome Translator API 官方语言目录，并由统一语言数据驱动所有语言选择器。
 
-后续不扩展翻译 Provider、第三方 API 或 API 配置功能。词典、更多语言、Prompt API、Side Panel、段落翻译、页面双语辅助等也不作为本项目计划功能；后续仅修复和完善现有 Chrome 内置本地翻译能力。图标优化也不属于后续开发范围。
+后续不扩展翻译 Provider、第三方 API 或 API 配置功能。词典、不在 Chrome Translator API 官方目录中的语言、Prompt API、Side Panel、段落翻译、页面双语辅助等也不作为当前阶段功能；语言目录以 Chrome 官方支持范围为准，具体语言对由运行时能力检查决定。图标优化也不属于后续开发范围。
 
 ---
 
@@ -43,7 +43,7 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 
 4. **核心翻译直接使用 Chrome Built-in Translator API。**
     - 最低 Chrome 版本为 138。
-    - 当前正式支持：英文 ↔ 简体中文、日语 -> 简体中文、韩语 -> 简体中文。
+    - 当前正式支持 Chrome Translator API 官方语言目录中的语言；语言对是否可用由运行时能力检查决定。
     - 通过内部 Chrome API 封装管理语言包、翻译实例和取消操作；不提供可配置 Provider。
 
 5. **网页划词不要“选中即自动翻译”。**
@@ -74,7 +74,7 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 10. **不要超范围实现。**
     当前不实现：
     - 本地英汉词典、音标、词性、多义词和技术词典；
-    - 更多语言；
+    - Chrome Translator API 官方目录之外的语言；
     - Chrome Prompt API；
     - Side Panel；
     - 段落翻译；
@@ -130,7 +130,7 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 
 ---
 
-# 2. 当前功能范围（V0.1 基线及 V0.2/V0.3 增量）
+# 2. 当前功能范围（V0.1 基线及 V0.2/V0.3/V0.4 增量）
 
 ## 2.1 必须实现
 
@@ -151,9 +151,8 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 
 ### 翻译
 
-- 英文 ↔ 简体中文；
-- 日语 -> 简体中文；
-- 韩语 -> 简体中文；
+- Chrome Translator API 官方语言目录中的语言作为源语言和目标语言；
+- 目录中的任意两个不同语言交由 Chrome 运行时检查语言对可用性；
 - 通过 Chrome Built-in Translator API 执行翻译；
 - 能检测 API 是否可用；
 - 能检测语言对模型状态；
@@ -439,8 +438,8 @@ export default defineConfig({
 export interface TranslationRequest {
   id: string;
   text: string;
-  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
-  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  sourceLanguage: SupportedLanguage;
+  targetLanguage: SupportedLanguage;
   source: 'window' | 'selection' | 'context-menu';
   createdAt: number;
 }
@@ -453,8 +452,8 @@ export interface TranslationResult {
   requestId: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
-  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  sourceLanguage: SupportedLanguage;
+  targetLanguage: SupportedLanguage;
   cached: boolean;
   durationMs: number;
   createdAt: number;
@@ -733,8 +732,8 @@ interface TranslationCacheEntity {
   id: string;          // hash
   sourceText: string;
   translatedText: string;
-  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
-  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  sourceLanguage: SupportedLanguage;
+  targetLanguage: SupportedLanguage;
   createdAt: number;
   lastUsedAt: number;
   hitCount: number;
@@ -752,8 +751,8 @@ interface HistoryEntity {
   id: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage: 'en' | 'zh' | 'ja' | 'ko';
-  targetLanguage: 'en' | 'zh' | 'ja' | 'ko';
+  sourceLanguage: SupportedLanguage;
+  targetLanguage: SupportedLanguage;
   source: 'window' | 'selection' | 'context-menu';
   createdAt: number;
 }
@@ -769,8 +768,8 @@ interface FavoriteEntity {
   id: string;
   sourceText: string;
   translatedText: string;
-  sourceLanguage?: 'en' | 'zh' | 'ja' | 'ko';
-  targetLanguage?: 'en' | 'zh' | 'ja' | 'ko';
+  sourceLanguage?: SupportedLanguage;
+  targetLanguage?: SupportedLanguage;
   createdAt: number;
 }
 ```
@@ -1551,27 +1550,39 @@ export function classifyText(text: string) {
 源语言和目标语言选择器使用同一组具体语言：
 
 ```text
-en / zh / ja / ko
+ar / bg / bn / cs / da / de / el / en / es / fi / fr / he / hi / hr /
+hu / id / it / ja / kn / ko / lt / mr / nl / no / pl / pt / ro / ru /
+sk / sl / sv / ta / te / th / tr / uk / vi / zh / zh-Hant
 ```
+
+界面语言选择器直接使用同一份完整目录，不再维护 `interfaceAvailable` 筛选字段。
+目录中的 39 种语言均有界面本地化文案，因而可同时作为界面语言、源语言和目标语言。
 
 源语言额外支持 `auto` 自动检测。目标语言不显示 `auto`。选择器展示完整语言集合，实际不可用的语言对仍由翻译服务校验并显示明确错误。
 
-```text
-en -> zh
-zh -> en
-ja -> zh
-ko -> zh
-```
+翻译服务允许目录中的任意两个不同语言作为请求语言对，不再维护手工白名单。
+Chrome `Translator.availability()` 是语言对和本地模型可用性的最终判断来源；
+如果当前设备不支持该语言对，界面显示明确的不可用提示。
 
 独立翻译窗口支持：
 
 - 手动选择源语言和目标语言；
 - 自动检测源语言；
-- 源语言默认是 `auto` 自动检测，目标语言默认跟随已保存的界面显示语言（初始默认中文 `zh`）；日本語/한국어界面暂回退为 `zh` 目标，不新增翻译语言对；
+- 源语言默认是 `auto` 自动检测，目标语言默认跟随已保存的界面显示语言（初始默认中文 `zh`）；
 - 自动检测只解析源语言，不自动修改用户选择的目标语言；
-- 仅允许当前支持的语言对，禁止相同语言互译或未定义语言对。
+- 仅允许目录中的语言，禁止相同语言互译；具体语言对可用性由 Chrome 运行时检查。
 
-语言识别采用本地文字特征规则优先；无法直接判断时，使用 Chrome Language Detector API 作为兜底。网页划词默认交给独立窗口自动检测语言。
+语言识别采用混合策略：
+
+- 中文、日文、韩文、阿拉伯文、希伯来文等具有独立文字特征的语言由本地规则优先识别；
+- 普通拉丁字母文本交给 Chrome Language Detector API，并保留排序后的候选语言；
+- 普通文本要求最高候选置信度至少为 0.55，且与第二候选有至少 0.10 的差值；
+- 单词和短文本使用 0.40 的最低置信度和 0.15 的候选差值，置信度达到 0.65 时可直接接受；
+- 不再维护 dog、cat 等英文硬编码词表；
+- 无法确认时，独立窗口展示最多 3 个候选语言，用户可以点击候选后继续翻译；
+- Chrome Language Detector 不可用或没有候选时，保留原文并要求手动选择源语言。
+
+网页划词默认交给独立窗口自动检测语言。
 
 ---
 
@@ -1642,10 +1653,9 @@ V0.1 设置项尽量少：
   打开 chrome://extensions/shortcuts
 ```
 
-界面语言在独立翻译窗口顶部下拉框切换，支持中文、English、日本語和한국어，
-并保存到 `translatorSettings.displayLanguage`。中文和 English 会分别作为对应的
-默认目标语言；日本語和 한국어 目前只改变界面文本，默认目标语言回退为简体中文，
-不因此扩展新的翻译语言对。
+界面语言在独立翻译窗口顶部下拉框切换，使用与源语言、目标语言相同的 39 项目录，
+并保存到 `translatorSettings.displayLanguage`。切换界面语言时，目标语言同步为相同的
+语言代码；界面语言扩展不会额外改变翻译语言对校验。
 
 不要加入第三方 API 或 Provider 设置。
 
@@ -1809,7 +1819,7 @@ I'm not sure what you mean.
 ## 48.2 翻译
 
 - [ ] Chrome 138+ 可检测 Translator；
-- [ ] 当前支持的语言对均可正确处理（`en ↔ zh`、`ja → zh`、`ko → zh`）；
+- [ ] 目录中的不同语言对交由 Chrome `Translator.availability()` 检查并正确处理；
 - [ ] 自动语言识别和手动源语言选择均可用；
 - [ ] 首次模型准备有进度 UI；
 - [ ] `deprecated` 可以翻译；
@@ -1859,7 +1869,7 @@ I'm not sure what you mean.
 
 # 49. 开发阶段拆分
 
-以下阶段是历史实施记录。当前工程已完成 Phase 1～10，以及 V0.2/V0.3 中的语言能力扩展；新增工作只按第 54 节的维护范围执行。
+以下阶段是历史实施记录。当前工程已完成 Phase 1～10，以及 V0.2/V0.3/V0.4 中已实现的语言能力扩展；新增工作只按第 54 节的维护范围执行。
 
 ## Phase 1：工程骨架
 
@@ -2115,12 +2125,12 @@ SSE
 
 # 54. 后续范围
 
-后续不再按 V0.2/V0.3/V0.4/V0.5 增加新的产品功能，只修复和完善现有 Chrome 内置本地翻译能力。
+后续不再增加词典、Provider 或其它独立产品功能；语言扩展按 Chrome 内置 Translator API 的官方语言范围逐批验证和加入，只修复和完善现有本地翻译能力。
 
 明确不实现：
 
 - 本地英汉词典、音标、词性、多义词和技术词典；
-- 更多语言；
+- Chrome Translator API 官方目录之外的语言；
 - Chrome Prompt API；
 - Side Panel；
 - 段落翻译；
@@ -2129,7 +2139,7 @@ SSE
 - 全文网页翻译、PDF 翻译、OCR 和截图翻译；
 - 云同步、用户系统和自建服务端。
 
-后续维护范围仅包括：Chrome Translator API 兼容性修复、语言包下载体验、翻译错误处理、缓存/历史/收藏可靠性和现有界面问题。
+后续维护范围包括：Chrome Translator API 兼容性修复、已支持语言的语言包下载体验、分批语言验证、翻译错误处理、缓存/历史/收藏可靠性和现有界面问题。
 
 ---
 
@@ -2230,13 +2240,13 @@ Translator Window / Content Script
 3. 点击扩展图标可以打开独立窗口；
 4. 独立窗口保持单实例；
 5. 快捷键能打开独立窗口；
-6. 能使用 Chrome Translator API 完成当前支持的语言对翻译（`en ↔ zh`、`ja → zh`、`ko → zh`）；
+6. 能使用 Chrome Translator API 检查并完成语言目录中可用的不同语言对翻译；
 7. 支持手动选择源语言以及自动语言识别；
 8. 首次模型准备过程用户可感知；
 9. 独立窗口可输入、翻译、复制，并分别播放原文和译文；
 10. 网页选中文字可以点击 `[译]` 翻译；
 11. 网页划词可以打开/聚焦独立窗口，并自动检测源语言；
-12. 独立窗口目标语言跟随已保存的界面语言；日语/韩语界面因当前翻译能力限制回退为简体中文；
+12. 独立窗口目标语言跟随已保存的界面语言；
 13. 右键翻译有效；
 14. 历史记录有效；
 15. 收藏有效；
