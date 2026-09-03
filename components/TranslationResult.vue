@@ -7,7 +7,6 @@ import {
 } from '../core/i18n/ui';
 
 const props = defineProps<{
-  sourceText: string;
   translatedText: string;
   status: 'idle' | 'preparing-model' | 'translating' | 'success' | 'error';
   progress: number;
@@ -15,7 +14,6 @@ const props = defineProps<{
   preparingLabel: string;
   copyLabel: string;
   favorited: boolean;
-  textKindLabel: string;
   displayLanguage: DisplayLanguage;
 }>();
 
@@ -34,19 +32,6 @@ const emit = defineEmits<{
   <div class="result-panel" aria-labelledby="result-title">
     <div class="field-heading">
       <h2 id="result-title">{{ copy.translation }}</h2>
-      <button
-        v-if="status === 'translating' || status === 'preparing-model'"
-        class="text-button subtle-button"
-        type="button"
-        @click="emit('cancel')"
-      >
-        {{ copy.cancel }}
-      </button>
-    </div>
-
-    <div v-if="sourceText" class="result-meta">
-      <span>{{ sourceText }}</span>
-      <span v-if="textKindLabel" class="type-badge">{{ textKindLabel }}</span>
     </div>
     <div class="result-content">
       <div
@@ -57,10 +42,6 @@ const emit = defineEmits<{
       >
         {{ translatedText }}
       </div>
-      <div v-else-if="status === 'idle'" class="result-placeholder">
-        {{ copy.resultPlaceholder }}
-      </div>
-
       <TranslationStatus
         :status="status"
         :progress="progress"
@@ -70,41 +51,53 @@ const emit = defineEmits<{
       />
     </div>
 
-    <div v-if="status === 'error'" class="result-actions">
-      <button class="secondary-button" type="button" @click="emit('retry')">{{ copy.retry }}</button>
-    </div>
-    <div v-else-if="translatedText" class="result-actions">
+    <div class="panel-footer result-actions">
       <button
-        class="action-button"
+        v-if="status === 'translating' || status === 'preparing-model'"
+        class="text-button subtle-button"
         type="button"
-        :aria-label="copy.speak"
-        :title="copy.speak"
-        @click="emit('speak')"
+        @click="emit('cancel')"
       >
-        <span aria-hidden="true" class="action-icon">🔊</span>
-        <span class="sr-only">{{ copy.speak }}</span>
+        {{ copy.cancel }}
       </button>
-      <button
-        class="action-button"
-        type="button"
-        :aria-label="favorited ? copy.unfavorite : copy.favorite"
-        :title="favorited ? copy.unfavorite : copy.favorite"
-        :aria-pressed="favorited"
-        @click="emit('favorite')"
-      >
-        <span aria-hidden="true" class="action-icon">{{ favorited ? '★' : '☆' }}</span>
-        <span class="sr-only">{{ favorited ? copy.unfavorite : copy.favorite }}</span>
+      <button v-else-if="status === 'error'" class="secondary-button" type="button" @click="emit('retry')">
+        {{ copy.retry }}
       </button>
-      <button
-        class="action-button"
-        type="button"
-        :aria-label="copyLabel"
-        :title="copyLabel"
-        @click="emit('copy')"
-      >
-        <span aria-hidden="true" class="action-icon">{{ copyLabel === copy.copied ? '✓' : '⧉' }}</span>
-        <span class="sr-only">{{ copyLabel }}</span>
-      </button>
+      <template v-else-if="translatedText">
+        <button
+          class="action-button"
+          type="button"
+          :aria-label="copy.speakTranslation"
+          :title="copy.speakTranslation"
+          @click="emit('speak')"
+        >
+          <span aria-hidden="true" class="action-icon">🔊</span>
+          <span class="sr-only">{{ copy.speakTranslation }}</span>
+        </button>
+        <div class="result-action-group">
+          <button
+            class="action-button"
+            type="button"
+            :aria-label="favorited ? copy.unfavorite : copy.favorite"
+            :title="favorited ? copy.unfavorite : copy.favorite"
+            :aria-pressed="favorited"
+            @click="emit('favorite')"
+          >
+            <span aria-hidden="true" class="action-icon">{{ favorited ? '★' : '☆' }}</span>
+            <span class="sr-only">{{ favorited ? copy.unfavorite : copy.favorite }}</span>
+          </button>
+          <button
+            class="action-button"
+            type="button"
+            :aria-label="copyLabel"
+            :title="copyLabel"
+            @click="emit('copy')"
+          >
+            <span aria-hidden="true" class="action-icon">{{ copyLabel === copy.copied ? '✓' : '⧉' }}</span>
+            <span class="sr-only">{{ copyLabel }}</span>
+          </button>
+        </div>
+      </template>
     </div>
   </div>
 </template>

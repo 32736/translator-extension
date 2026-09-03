@@ -15,7 +15,7 @@
 - [x] Phase 3：首次语言包下载进度实机验证
 - [x] Phase 4：独立窗口翻译 UI
 - [x] Phase 5：IndexedDB 持久化缓存、历史和收藏
-- [x] Phase 6：网页划词按钮与 Popover
+- [x] Phase 6：网页划词按钮与独立窗口转交
 - [x] Phase 7：跨页面通信与 pending 请求
 - [x] Phase 8：右键菜单翻译
 - [x] Phase 9：设置与 UI 收尾

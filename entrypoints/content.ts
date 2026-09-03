@@ -1,70 +1,43 @@
-import {
-  SelectionTriggerController,
-} from '../content-ui/SelectionTrigger';
-import { TranslationPopoverController } from '../content-ui/TranslationPopover';
-import { ChromeLanguageDetector } from '../core/language/language-detector';
-import {
-  ExtensionCacheRepository,
-  ExtensionHistoryRepository,
-} from '../core/storage/extension-repository';
-import { ChromeTranslatorProvider } from '../core/translator/chrome-translator-provider';
-import type { RuntimeMessage } from '../core/messaging/messages';
+import { SelectionTriggerController } from '../content-ui/SelectionTrigger';
+import { createSelectionTranslationMessage } from '../core/messaging/selection-handoff';
 import {
   isSettings,
   loadSettings,
   SETTINGS_KEY,
 } from '../core/storage/settings';
-import { TranslatorService } from '../core/translator/translator-service';
 
 export default defineContentScript({
   matches: ['<all_urls>'],
   runAt: 'document_idle',
   async main() {
-    let provider: ChromeTranslatorProvider | null = null;
-    let languageDetector: ChromeLanguageDetector | null = null;
     let controller: SelectionTriggerController | null = null;
-    let popover: TranslationPopoverController | null = null;
 
     const mountSelectionUi = (): void => {
-      if (controller !== null || provider !== null || popover !== null) {
+      if (controller !== null) {
         return;
       }
 
-      provider = new ChromeTranslatorProvider();
-      languageDetector = new ChromeLanguageDetector();
-      const service = new TranslatorService(
-        provider,
-        new ExtensionCacheRepository(),
-        new ExtensionHistoryRepository(),
-      );
       controller = new SelectionTriggerController((selection) => {
         controller?.hide();
-        void popover?.open(selection);
+        const message = createSelectionTranslationMessage(
+          selection.text,
+          selection.tooLong,
+        );
+
+        if (message === null) {
+          return;
+        }
+
+        void chrome.runtime.sendMessage(message).catch(() => {
+          // The extension may be restarting while the user clicks the trigger.
+        });
       });
-      popover = new TranslationPopoverController(
-        controller.shadowRoot,
-        service,
-        (text) => {
-          const message: RuntimeMessage = {
-            type: 'TRANSLATE_IN_WINDOW',
-            payload: { text, source: 'selection' },
-          };
-          void chrome.runtime.sendMessage(message);
-        },
-        languageDetector,
-      );
       controller.mount();
     };
 
     const unmountSelectionUi = (): void => {
-      popover?.destroy();
       controller?.destroy();
-      provider?.destroy();
-      languageDetector?.destroy();
-      popover = null;
       controller = null;
-      provider = null;
-      languageDetector = null;
     };
 
     const settings = await loadSettings();

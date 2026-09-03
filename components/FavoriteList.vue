@@ -31,7 +31,6 @@ const emit = defineEmits<{
         >
           <span class="saved-source">{{ item.sourceText }}</span>
           <span class="saved-translation">{{ item.translatedText }}</span>
-          <span class="saved-arrow" aria-hidden="true">›</span>
         </button>
         <button
           class="saved-delete"

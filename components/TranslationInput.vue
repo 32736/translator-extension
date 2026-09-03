@@ -8,6 +8,7 @@ import {
 const props = defineProps<{
   modelValue: string;
   disabled: boolean;
+  canSpeakSource: boolean;
   displayLanguage: DisplayLanguage;
 }>();
 
@@ -17,6 +18,7 @@ const emit = defineEmits<{
   'update:modelValue': [value: string];
   translate: [];
   clear: [];
+  speak: [];
   paste: [];
 }>();
 
@@ -27,7 +29,13 @@ onMounted(() => {
 });
 
 function handleKeydown(event: KeyboardEvent): void {
-  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+  if (
+    event.key === 'Enter' &&
+    !event.shiftKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey
+  ) {
     event.preventDefault();
     emit('translate');
   }
@@ -67,12 +75,23 @@ function handleKeydown(event: KeyboardEvent): void {
       @paste="emit('paste')"
     />
 
-    <div class="input-footer">
-      <span class="keyboard-hint"><kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd></span>
-      <button class="primary-button" type="button" :disabled="disabled" @click="emit('translate')">
-        <span>{{ copy.translate }}</span>
-        <kbd aria-hidden="true">↵</kbd>
+    <div class="panel-footer input-footer">
+      <button
+        class="action-button"
+        type="button"
+        :disabled="disabled || !modelValue || !canSpeakSource"
+        :aria-label="copy.speakSource"
+        :title="copy.speakSource"
+        @click="emit('speak')"
+      >
+        <span aria-hidden="true" class="action-icon">🔊</span>
+        <span class="sr-only">{{ copy.speakSource }}</span>
       </button>
+      <div class="input-actions">
+        <button class="primary-button" type="button" :disabled="disabled" @click="emit('translate')">
+          <span>{{ copy.translate }}</span>
+        </button>
+      </div>
     </div>
   </div>
 </template>

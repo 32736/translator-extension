@@ -3,6 +3,7 @@ import {
   isRuntimeMessage,
   isRuntimeResponse,
 } from '../core/messaging/messages';
+import { createSelectionTranslationMessage } from '../core/messaging/selection-handoff';
 
 const cacheEntity = {
   id: 'cache-id',
@@ -74,6 +75,20 @@ describe('runtime message validation', () => {
         payload: { text: '   ', source: 'selection' },
       }),
     ).toBe(false);
+  });
+});
+
+describe('selection handoff', () => {
+  it('creates a normalized message for short selections', () => {
+    expect(createSelectionTranslationMessage('  hello  ', false)).toEqual({
+      type: 'TRANSLATE_IN_WINDOW',
+      payload: { text: 'hello', source: 'selection' },
+    });
+  });
+
+  it('does not hand off empty or overlong selections', () => {
+    expect(createSelectionTranslationMessage('   ', false)).toBeNull();
+    expect(createSelectionTranslationMessage('hello', true)).toBeNull();
   });
 });
 

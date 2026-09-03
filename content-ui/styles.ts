@@ -30,6 +30,21 @@ button {
   background: #f0f0f0;
 }
 
+.trigger-status {
+  position: fixed;
+  z-index: 1;
+  max-width: 280px;
+  border: 1px solid #e7e7e7;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px rgb(0 0 0 / 14%);
+  color: #707070;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 7px 9px;
+  pointer-events: none;
+}
+
 .trigger:focus-visible,
 .popover button:focus-visible {
   outline: 2px solid #315bdc;
@@ -149,6 +164,12 @@ button {
 
   .trigger:hover {
     background: #343434;
+  }
+
+  .trigger-status {
+    border-color: #343434;
+    background: #222222;
+    color: #c0c6cc;
   }
 
   .popover {

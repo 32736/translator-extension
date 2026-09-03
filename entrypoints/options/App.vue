@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import {
+  getUiCopy,
+  type DisplayLanguage,
+} from '../../core/i18n/ui';
 import {
   DEFAULT_SETTINGS,
   loadSettings,
@@ -12,6 +16,8 @@ import { IndexedDbHistoryRepository } from '../../core/storage/history-repositor
 
 const settings = ref<Settings>(DEFAULT_SETTINGS);
 const statusMessage = ref('');
+const displayLanguage = ref<DisplayLanguage>('zh');
+const ui = computed(() => getUiCopy(displayLanguage.value));
 const cacheRepository = new IndexedDbCacheRepository();
 const historyRepository = new IndexedDbHistoryRepository();
 const favoriteRepository = new IndexedDbFavoriteRepository();
@@ -27,14 +33,14 @@ function applyTheme(theme: Settings['theme']): void {
 async function updateTheme(): Promise<void> {
   settings.value = await saveSettings({ theme: settings.value.theme });
   applyTheme(settings.value.theme);
-  statusMessage.value = '主题设置已保存。';
+  statusMessage.value = ui.value.themeSaved;
 }
 
 async function updateSelectionEnabled(): Promise<void> {
   settings.value = await saveSettings({
     selectionEnabled: settings.value.selectionEnabled,
   });
-  statusMessage.value = '网页划词设置已保存。';
+  statusMessage.value = ui.value.selectionSaved;
 }
 
 async function clearHistory(): Promise<void> {
@@ -56,9 +62,20 @@ function openShortcuts(): void {
   window.open('chrome://extensions/shortcuts', '_blank', 'noopener');
 }
 
+function applyDisplayLanguage(language: DisplayLanguage): void {
+  document.documentElement.lang = {
+    zh: 'zh-CN',
+    en: 'en',
+    ja: 'ja',
+    ko: 'ko',
+  }[language];
+}
+
 onMounted(() => {
   void loadSettings().then((loadedSettings) => {
     settings.value = loadedSettings;
+    displayLanguage.value = loadedSettings.displayLanguage;
+    applyDisplayLanguage(loadedSettings.displayLanguage);
     applyTheme(loadedSettings.theme);
   });
 });
@@ -68,44 +85,44 @@ onMounted(() => {
   <main class="settings-shell">
     <header class="settings-header">
       <p class="eyebrow">LOCAL-FIRST TRANSLATOR</p>
-      <h1>设置</h1>
+      <h1>{{ ui.settingsTitle }}</h1>
     </header>
 
     <section class="settings-section" aria-labelledby="appearance-title">
-      <h2 id="appearance-title">外观</h2>
-      <label v-for="theme in [{ value: 'system', label: '跟随系统' }, { value: 'light', label: '浅色' }, { value: 'dark', label: '深色' }]" :key="theme.value" class="radio-row">
+      <h2 id="appearance-title">{{ ui.appearance }}</h2>
+      <label v-for="theme in [{ value: 'system', label: ui.followSystem }, { value: 'light', label: ui.light }, { value: 'dark', label: ui.dark }]" :key="theme.value" class="radio-row">
         <input v-model="settings.theme" type="radio" name="theme" :value="theme.value" @change="updateTheme" />
         <span>{{ theme.label }}</span>
       </label>
     </section>
 
     <section class="settings-section" aria-labelledby="selection-title">
-      <h2 id="selection-title">网页划词</h2>
+      <h2 id="selection-title">{{ ui.selection }}</h2>
       <label class="checkbox-row">
         <input v-model="settings.selectionEnabled" type="checkbox" @change="updateSelectionEnabled" />
-        <span>启用划词按钮</span>
+        <span>{{ ui.enableSelection }}</span>
       </label>
     </section>
 
     <section class="settings-section" aria-labelledby="data-title">
-      <h2 id="data-title">本地数据</h2>
+      <h2 id="data-title">{{ ui.localData }}</h2>
       <div class="action-row">
-        <span>历史记录</span>
-        <button type="button" @click="clearHistory">清空历史</button>
+        <span>{{ ui.history }}</span>
+        <button type="button" @click="clearHistory">{{ ui.clearHistory }}</button>
       </div>
       <div class="action-row">
-        <span>翻译缓存</span>
-        <button type="button" @click="clearCache">清空缓存</button>
+        <span>{{ ui.cache }}</span>
+        <button type="button" @click="clearCache">{{ ui.clearCache }}</button>
       </div>
       <div class="action-row">
-        <span>收藏</span>
-        <button type="button" @click="clearFavorites">清空收藏</button>
+        <span>{{ ui.favorites }}</span>
+        <button type="button" @click="clearFavorites">{{ ui.clearFavorites }}</button>
       </div>
     </section>
 
     <section class="settings-section" aria-labelledby="shortcut-title">
-      <h2 id="shortcut-title">快捷键</h2>
-      <button class="link-button" type="button" @click="openShortcuts">打开 chrome://extensions/shortcuts</button>
+      <h2 id="shortcut-title">{{ ui.shortcuts }}</h2>
+      <button class="link-button" type="button" @click="openShortcuts">{{ ui.openShortcuts }}</button>
     </section>
 
     <p v-if="statusMessage" class="settings-status" role="status">{{ statusMessage }}</p>

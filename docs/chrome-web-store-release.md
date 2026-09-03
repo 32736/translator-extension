@@ -43,9 +43,9 @@ Features:
 - English ↔ Simplified Chinese translation.
 - Japanese → Simplified Chinese and Korean → Simplified Chinese translation.
 - User-triggered selection translation and context-menu translation.
-- Copy, speak, retry, history, favorites, and translation cache.
+- Copy, play the original text and translation aloud, retry, history, favorites, and translation cache.
 - Local browser storage for settings, history, favorites, and cache.
-- Chinese and English interface display languages.
+- Chinese, English, Japanese, and Korean interface display languages.
 - Light, dark, and system theme options.
 
 Chrome may download a local language model the first time a language pair is used. The availability of language pairs and local models depends on the Chrome installation and device environment.
@@ -63,9 +63,9 @@ Translator 是一款面向 Chrome Desktop 的轻量、本地优先翻译扩展�
 - 英语 ↔ 简体中文。
 - 日语 → 简体中文、韩语 → 简体中文。
 - 用户主动触发的网页划词翻译和右键菜单翻译。
-- 复制、朗读、重试、历史、收藏和翻译缓存。
+- 复制、分别朗读原文与译文、重试、历史、收藏和翻译缓存。
 - 设置、历史、收藏和缓存均保存在本地浏览器。
-- 中文和英文页面显示语言。
+- 中文、英文、日文和韩文页面显示语言。
 - 浅色、深色和跟随系统主题。
 
 首次使用某个语言对时，Chrome 可能下载本地语言模型。语言对和本地模型的可用性取决于 Chrome 版本及设备环境。
@@ -123,7 +123,7 @@ No. All extension logic is bundled in the submitted package. The extension does 
 3. Enter text, choose source and target languages, and translate.
 4. Select text on a normal webpage and click the selection translation button.
 5. Select text and use the context-menu translation command.
-6. Verify copy, speak, history, favorites, cache, clear actions, theme, and Chinese/English display language.
+6. Verify copy, speak, history, favorites, cache, clear actions, theme, and all four display languages.
 7. The first use of a language pair may show Chrome's local model download progress.
 
 No login, external server, API key, or test account is required.

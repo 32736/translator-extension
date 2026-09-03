@@ -19,6 +19,7 @@ import {
 } from '../../core/storage/favorite-repository';
 import {
   getUiCopy,
+  isDisplayLanguage,
   languageLabelForDisplay,
   type DisplayLanguage,
 } from '../../core/i18n/ui';
@@ -29,7 +30,6 @@ import {
   SETTINGS_KEY,
   type Settings,
 } from '../../core/storage/settings';
-import { classifyText } from '../../core/language/classify';
 import {
   ChromeLanguageDetector,
 } from '../../core/language/language-detector';
@@ -40,7 +40,6 @@ import {
   SUPPORTED_LANGUAGES,
 } from '../../core/translator/languages';
 import { ChromeTranslatorProvider } from '../../core/translator/chrome-translator-provider';
-import type { TextKind } from '../../core/language/types';
 import type {
   TranslationRequest,
   TranslationSource,
@@ -91,7 +90,6 @@ const copyLabel = computed(() => {
   return ui.value.copy;
 });
 const favorited = ref(false);
-const textKind = ref<TextKind | null>(null);
 const activeSavedTab = ref<SavedTab>('history');
 const historyItems = ref<HistoryEntity[]>([]);
 const favoriteItems = ref<FavoriteEntity[]>([]);
@@ -101,11 +99,40 @@ const detectedLanguage = ref<SourceLanguage | null>(null);
 const supportedLanguages = SUPPORTED_LANGUAGES;
 const availableTargetLanguages: readonly TargetLanguage[] =
   SUPPORTED_LANGUAGES.map((language) => language.code);
+const sourceSpeechLanguage = computed<SourceLanguage | null>(() => {
+  const text = normalizeText(inputText.value);
+
+  if (!text) {
+    return null;
+  }
+
+  if (sourceLanguage.value !== 'auto') {
+    return sourceLanguage.value;
+  }
+
+  return text === sourceText.value ? detectedLanguage.value : null;
+});
+const canSpeakSource = computed(
+  () =>
+    sourceSpeechLanguage.value !== null &&
+    status.value !== 'preparing-model' &&
+    status.value !== 'translating',
+);
 const settings = ref<Settings>({
   theme: 'system',
   selectionEnabled: true,
   displayLanguage: 'zh',
 });
+const activeSavedItems = computed(() =>
+  activeSavedTab.value === 'history'
+    ? historyItems.value
+    : favoriteItems.value,
+);
+const activeSavedClearLabel = computed(() =>
+  activeSavedTab.value === 'history'
+    ? ui.value.clearHistory
+    : ui.value.clearFavorites,
+);
 
 const provider = new ChromeTranslatorProvider();
 const cacheRepository = new IndexedDbCacheRepository();
@@ -165,18 +192,6 @@ function isCurrentRequest(requestId: string): boolean {
   return requestId === `window-${requestSequence}`;
 }
 
-function textKindLabel(kind: TextKind | null): string {
-  if (kind === 'word') {
-    return ui.value.word;
-  }
-
-  if (kind === 'phrase') {
-    return ui.value.phrase;
-  }
-
-  return kind === 'sentence' ? ui.value.sentence : '';
-}
-
 function clearTranslationState(): void {
   currentAbortController?.abort();
   currentAbortController = null;
@@ -188,7 +203,6 @@ function clearTranslationState(): void {
   progress.value = 0;
   preparingState.value = 'translation';
   favorited.value = false;
-  textKind.value = null;
 }
 
 function setSourceLanguage(value: string): void {
@@ -243,7 +257,18 @@ function applyTheme(theme: Settings['theme']): void {
 }
 
 function applyDisplayLanguage(language: DisplayLanguage): void {
-  document.documentElement.lang = language === 'zh' ? 'zh-CN' : 'en';
+  document.documentElement.lang = {
+    zh: 'zh-CN',
+    en: 'en',
+    ja: 'ja',
+    ko: 'ko',
+  }[language];
+}
+
+function getTargetLanguageForDisplay(
+  language: DisplayLanguage,
+): TargetLanguage {
+  return language === 'en' ? 'en' : 'zh';
 }
 
 function openOptions(): void {
@@ -259,8 +284,18 @@ async function setDisplayLanguage(language: DisplayLanguage): Promise<void> {
   settings.value = savedSettings;
   displayLanguage.value = savedSettings.displayLanguage;
   applyDisplayLanguage(savedSettings.displayLanguage);
-  targetLanguage.value = savedSettings.displayLanguage;
+  targetLanguage.value = getTargetLanguageForDisplay(
+    savedSettings.displayLanguage,
+  );
   clearTranslationState();
+}
+
+function handleDisplayLanguageChange(value: string): void {
+  if (!isDisplayLanguage(value)) {
+    return;
+  }
+
+  void setDisplayLanguage(value);
 }
 
 function getTranslationPairForDisplay(): string {
@@ -323,7 +358,7 @@ function handleSettingsChanged(
     if (displayLanguageChanged) {
       displayLanguage.value = value.displayLanguage;
       applyDisplayLanguage(value.displayLanguage);
-      targetLanguage.value = value.displayLanguage;
+      targetLanguage.value = getTargetLanguageForDisplay(value.displayLanguage);
       clearTranslationState();
     }
   }
@@ -368,7 +403,6 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
   const abortController = new AbortController();
   currentAbortController = abortController;
   sourceText.value = text;
-  textKind.value = classifyText(text);
   status.value = 'preparing-model';
   progress.value = 0;
   preparingState.value = 'translation';
@@ -485,7 +519,6 @@ function clearInput(): void {
   errorMessage.value = '';
   progress.value = 0;
   favorited.value = false;
-  textKind.value = null;
   detectedLanguage.value = null;
 }
 
@@ -528,13 +561,19 @@ async function toggleFavorite(): Promise<void> {
   await refreshFavoriteState();
 }
 
-async function deleteHistoryItem(item: HistoryEntity): Promise<void> {
-  await historyRepository.remove(item.id);
+async function clearHistory(): Promise<void> {
+  await historyRepository.clear();
   await refreshSavedData();
 }
 
-async function clearHistory(): Promise<void> {
-  await historyRepository.clear();
+async function clearFavorites(): Promise<void> {
+  await favoriteRepository.clear();
+  await refreshSavedData();
+  await refreshFavoriteState();
+}
+
+async function deleteHistoryItem(item: HistoryEntity): Promise<void> {
+  await historyRepository.remove(item.id);
   await refreshSavedData();
 }
 
@@ -544,10 +583,13 @@ async function deleteFavoriteItem(item: FavoriteEntity): Promise<void> {
   await refreshFavoriteState();
 }
 
-async function clearFavorites(): Promise<void> {
-  await favoriteRepository.clear();
-  await refreshSavedData();
-  await refreshFavoriteState();
+function clearActiveSaved(): void {
+  if (activeSavedTab.value === 'history') {
+    void clearHistory();
+    return;
+  }
+
+  void clearFavorites();
 }
 
 function selectSavedItem(item: {
@@ -564,7 +606,6 @@ function selectSavedItem(item: {
   targetLanguage.value = item.targetLanguage ?? 'zh';
   detectedLanguage.value = null;
   sourceText.value = item.sourceText;
-  textKind.value = classifyText(item.sourceText);
   translatedText.value = item.translatedText;
   status.value = 'success';
   errorMessage.value = '';
@@ -595,19 +636,30 @@ async function copyTranslation(): Promise<void> {
   }
 }
 
+function speakText(text: string, language: SourceLanguage | TargetLanguage): void {
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = languageSpeechLocale(language);
+  speechSynthesis.speak(utterance);
+}
+
 function speakSource(): void {
-  if (!sourceText.value) {
+  const text = normalizeText(inputText.value);
+  const speechLanguage = sourceSpeechLanguage.value;
+
+  if (!text || speechLanguage === null) {
     return;
   }
 
-  speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(sourceText.value);
-  const speechLanguage =
-    sourceLanguage.value === 'auto'
-      ? detectedLanguage.value ?? 'en'
-      : sourceLanguage.value;
-  utterance.lang = languageSpeechLocale(speechLanguage);
-  speechSynthesis.speak(utterance);
+  speakText(text, speechLanguage);
+}
+
+function speakTranslation(): void {
+  if (!translatedText.value) {
+    return;
+  }
+
+  speakText(translatedText.value, targetLanguage.value);
 }
 
 onBeforeUnmount(() => {
@@ -626,7 +678,9 @@ onMounted(() => {
     settings.value = loadedSettings;
     displayLanguage.value = loadedSettings.displayLanguage;
     applyDisplayLanguage(loadedSettings.displayLanguage);
-    targetLanguage.value = loadedSettings.displayLanguage;
+    targetLanguage.value = getTargetLanguageForDisplay(
+      loadedSettings.displayLanguage,
+    );
     applyTheme(loadedSettings.theme);
   });
   void refreshSavedData();
@@ -654,32 +708,21 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
   <main class="translator-shell">
     <header class="translator-header">
       <h1 class="sr-only">{{ ui.appTitle }}</h1>
-      <div
-        class="display-language-switch"
-        role="group"
+      <label class="sr-only" for="display-language-select">
+        {{ ui.displayLanguage }}
+      </label>
+      <select
+        id="display-language-select"
+        class="display-language-select"
+        :value="displayLanguage"
         :aria-label="ui.displayLanguage"
+        @change="handleDisplayLanguageChange(($event.target as HTMLSelectElement).value)"
       >
-        <button
-          class="display-language-button"
-          :class="{ active: displayLanguage === 'zh' }"
-          type="button"
-          :aria-pressed="displayLanguage === 'zh'"
-          :title="ui.chinese"
-          @click="setDisplayLanguage('zh')"
-        >
-          {{ ui.chinese }}
-        </button>
-        <button
-          class="display-language-button"
-          :class="{ active: displayLanguage === 'en' }"
-          type="button"
-          :aria-pressed="displayLanguage === 'en'"
-          :title="ui.english"
-          @click="setDisplayLanguage('en')"
-        >
-          {{ ui.english }}
-        </button>
-      </div>
+        <option value="zh">{{ ui.chinese }}</option>
+        <option value="en">{{ ui.english }}</option>
+        <option value="ja">{{ ui.japanese }}</option>
+        <option value="ko">{{ ui.korean }}</option>
+      </select>
       <button
         class="settings-button"
         type="button"
@@ -723,7 +766,6 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
       >
         <span aria-hidden="true">↔</span>
       </button>
-      <span v-else class="language-swap-placeholder" aria-hidden="true">→</span>
       <div class="language-side language-side-target">
         <span class="language-caption">{{ ui.targetLanguage }}</span>
         <select
@@ -747,14 +789,15 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
       <TranslationInput
         v-model="inputText"
         :disabled="status === 'preparing-model' || status === 'translating'"
+        :can-speak-source="canSpeakSource"
         :display-language="displayLanguage"
         @translate="translate"
         @clear="clearInput"
+        @speak="speakSource"
         @paste="handlePaste"
       />
 
       <TranslationResult
-        :source-text="sourceText"
         :translated-text="translatedText"
         :status="status"
         :progress="progress"
@@ -762,10 +805,9 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
         :preparing-label="preparingLabel"
         :copy-label="copyLabel"
         :favorited="favorited"
-        :text-kind-label="textKindLabel(textKind)"
         :display-language="displayLanguage"
         @copy="copyTranslation"
-        @speak="speakSource"
+        @speak="speakTranslation"
         @favorite="toggleFavorite"
         @retry="translate"
         @cancel="cancelTranslation"
@@ -777,7 +819,6 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
       :aria-label="`${ui.recent} / ${ui.favorites}`"
     >
       <div class="saved-heading">
-        <h2>{{ activeSavedTab === 'history' ? ui.recent : ui.favorites }}</h2>
         <div class="saved-tabs" role="tablist" :aria-label="ui.savedContent">
           <button
             id="saved-tab-history"
@@ -808,6 +849,16 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
             {{ ui.favorites }}
           </button>
         </div>
+        <button
+          class="saved-clear-button"
+          type="button"
+          :disabled="activeSavedItems.length === 0"
+          :aria-label="activeSavedClearLabel"
+          :title="activeSavedClearLabel"
+          @click="clearActiveSaved"
+        >
+          {{ ui.clear }}
+        </button>
       </div>
       <div
         v-if="activeSavedTab === 'history'"
@@ -816,18 +867,6 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
         role="tabpanel"
         aria-labelledby="saved-tab-history"
       >
-        <div class="saved-panel-toolbar">
-          <button
-            class="saved-clear-button"
-            type="button"
-            :disabled="historyItems.length === 0"
-            :aria-label="ui.clearHistory"
-            :title="ui.clearHistory"
-            @click="clearHistory"
-          >
-            {{ ui.clearHistory }}
-          </button>
-        </div>
         <HistoryList
           :items="historyItems"
           :display-language="displayLanguage"
@@ -842,18 +881,6 @@ function handleRuntimeMessage(message: RuntimeMessage): void {
         role="tabpanel"
         aria-labelledby="saved-tab-favorites"
       >
-        <div class="saved-panel-toolbar">
-          <button
-            class="saved-clear-button"
-            type="button"
-            :disabled="favoriteItems.length === 0"
-            :aria-label="ui.clearFavorites"
-            :title="ui.clearFavorites"
-            @click="clearFavorites"
-          >
-            {{ ui.clearFavorites }}
-          </button>
-        </div>
         <FavoriteList
           :items="favoriteItems"
           :display-language="displayLanguage"

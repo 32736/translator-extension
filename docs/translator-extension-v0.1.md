@@ -53,7 +53,7 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 
 6. **独立窗口是产品主界面。**
    - 用户可直接输入单词/短句。
-   - 支持历史、收藏、一键复制、发音。
+   - 支持历史、收藏、一键复制，以及原文和译文分别发音。
    - 网页划词只属于快速入口。
 
 7. **本地数据使用 IndexedDB。**
@@ -168,13 +168,11 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 
 - 鼠标选择非空文本；
 - 鼠标松开后显示一个很小的 `[译]` 按钮；
-- 点击后翻译；
-- 页面浮层显示：
-  - 原文；
-  - 译文；
-  - 复制；
-  - 在独立窗口打开；
-- 点击页面其他位置后隐藏按钮/结果；
+- 点击后将文本交给独立翻译窗口，并打开或聚焦该窗口；
+- 独立翻译窗口自动检测源语言并发起翻译；
+- 译文、进度、复制、原文/译文发音和重试均在独立翻译窗口中完成；
+- 页面侧不执行翻译，也不默认显示翻译结果浮层；
+- 点击页面其他位置后隐藏按钮；
 - `Esc` 隐藏；
 - 页面滚动、窗口 resize 时正确处理位置；
 - 不破坏页面原有 DOM；
@@ -197,12 +195,13 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 
 - textarea/input；
 - 支持粘贴；
-- 支持 `Ctrl + Enter` 翻译；
+- 按 `Enter` 翻译；
+- 按 `Shift + Enter` 换行；
 - 自动 trim；
 - 空输入不请求翻译；
 - 支持一键清空；
 - 支持一键复制译文；
-- 显示原文和译文；
+- 显示译文；原文始终保留在输入区；
 - 显示当前翻译状态。
 
 ### 本地数据
@@ -216,7 +215,10 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 ### 发音
 
 V0.1 可使用浏览器 `speechSynthesis`：
-- 按源语言播放原文；
+- 原文区域播放输入文本，使用手动选择的源语言；
+- 自动检测模式使用已确认的检测结果播放原文，检测完成前按钮不可用；
+- 译文区域播放翻译结果，使用当前目标语言；
+- 播放新内容前取消上一段语音，避免原文和译文重叠；
 - 单词/短句均可。
 
 ---
@@ -311,7 +313,7 @@ translator-extension/
 │
 ├─ content-ui/
 │  ├─ SelectionTrigger.ts
-│  ├─ TranslationPopover.ts
+│  ├─ TranslationPopover.ts（保留，非默认链路）
 │  ├─ position.ts
 │  └─ styles.ts
 │
@@ -329,6 +331,11 @@ translator-extension/
 │  │
 │  ├─ messaging/
 │  │   ├─ messages.ts
+│  │   ├─ pending-translation.ts
+│  │   └─ selection-handoff.ts
+│  │
+│  ├─ i18n/
+│  │   └─ ui.ts
 │  │
 │  ├─ storage/
 │  │   ├─ db.ts
@@ -355,8 +362,11 @@ translator-extension/
 │      └─ translator-taskbar.ico
 │
 ├─ wxt.config.ts
+├─ eslint.config.js
 ├─ tsconfig.json
 ├─ package.json
+├─ pnpm-lock.yaml
+├─ tests/
 └─ README.md
 ```
 
@@ -603,6 +613,7 @@ export class TranslatorService {
   constructor(
     private readonly provider: TranslatorProvider,
     private readonly cacheRepository: CacheRepository,
+    private readonly historyRepository?: HistoryRepository,
   ) {}
 
   async translate(
@@ -610,6 +621,7 @@ export class TranslatorService {
     options?: {
       signal?: AbortSignal;
       onDownloadProgress?: (progress: number) => void;
+      onTranslating?: () => void;
     },
   ): Promise<TranslationResult> {
     // 1. normalize
@@ -1090,14 +1102,16 @@ Selection
 ↓
 [译] Trigger
 ↓
-Translation Popover
+TRANSLATE_IN_WINDOW
 ↓
-与独立窗口通信
+Background pending/runtime messaging
+↓
+独立翻译窗口自动检测并翻译
 ```
 
 不要让 Vue 挂载整个网页 UI。
 
-划词按钮/Popover 很小，可用：
+划词按钮很小，可用：
 - 原生 DOM；
 - 或一个独立 Shadow DOM root。
 
@@ -1108,7 +1122,7 @@ Content Script
 ↓
 创建固定 Shadow DOM Host
 ↓
-按钮和浮层全部放 Shadow DOM
+按钮放 Shadow DOM
 ```
 
 优点：
@@ -1292,9 +1306,10 @@ click Trigger
 
 ---
 
-# 32. 页面侧的 Translator 实例
+# 32. Translator 实例的执行上下文
 
-当前实现中，Content Script 与独立翻译窗口各自维护一个 Chrome Translator API 封装实例：
+当前实现中，只有独立翻译窗口维护 Chrome Translator API 封装实例。Content Script
+只负责选区触发器和发送 `TRANSLATE_IN_WINDOW` 消息，不执行翻译：
 
 ```ts
 let translatorPromise:
@@ -1307,37 +1322,33 @@ let translatorPromise:
 Translator.create(...)
 ```
 
-两者均在页面侧执行，不通过 Background Service Worker 调用 Translator API；如果当前上下文不支持 API，则向用户显示不可用错误，不实现 offscreen 或隐藏页面 fallback。
+独立翻译窗口在页面侧执行，不通过 Background Service Worker 调用 Translator API；如果当前上下文不支持 API，则向用户显示不可用错误，不实现 offscreen 或隐藏页面 fallback。
 
-V0.1 验收重点：最终网页划词功能必须稳定工作，而不是强制某一种内部执行上下文。
+网页划词通过 Background 的 pending translation 处理窗口初始化竞态，最终交由独立窗口完成自动检测和翻译。
 
 ---
 
-# 33. Translation Popover
+# 33. 网页划词默认不显示翻译 Popover
 
-Popover 内容：
-
-```text
-┌─────────────────────────────┐
-│ The property is read-only.  │
-│                             │
-│ 此属性为只读。               │
-│                             │
-│ [复制]             [↗ 打开] │
-└─────────────────────────────┘
-```
-
-状态：
+网页划词点击 `[译]` 后只负责把选中文本交给独立翻译窗口：
 
 ```text
-idle
-preparing-model
-translating
-success
-error
+Selection → [译] → 独立翻译窗口
 ```
 
-模型下载时：
+独立窗口负责以下状态和操作：
+
+```text
+自动检测源语言
+准备本地翻译模型
+翻译中 / 成功 / 失败
+复制 / 发音 / 重试
+```
+
+当前默认链路不在网页侧创建 `TranslationPopover`。如未来重新启用网页结果浮层，
+需要单独评估与独立窗口之间的状态同步，不应让它重新成为默认翻译入口。
+
+模型下载时，独立窗口显示：
 
 ```text
 正在准备本地翻译模型
@@ -1346,31 +1357,23 @@ error
 
 ---
 
-# 34. Popover 隐藏规则
+# 34. 网页侧 Trigger 隐藏规则
 
 以下情况隐藏：
 
-- 点击 Popover 外；
 - Esc；
 - 新 selection；
 - selection 清空；
 - 页面导航；
 - Content Script 被销毁。
 
-滚动时建议：
+滚动时：
 
 ```text
-如果 Popover 已展示结果：
-  保持 fixed 坐标或关闭；
+隐藏 Trigger；
 ```
 
-V0.1 最简单可靠方案：
-
-```text
-页面 scroll => 隐藏 Trigger 和 Popover
-```
-
-不要实时跟随选区。
+不要实时跟随选区，也不要在网页侧保留翻译结果。
 
 ---
 
@@ -1381,18 +1384,17 @@ V0.1 最简单可靠方案：
 ```text
 ┌────────────────────────────────────┐
 │ Translator                    ⚙    │
-│ 自动检测 → 简体中文                 │
+│ 自动检测       简体中文             │
 ├────────────────────────────────────┤
 │                                    │
 │ 输入短文本...                       │
-│                                    │
-│                          [清空]     │
+│ [🔊]                         [翻译] │
 ├────────────────────────────────────┤
 │                                    │
 │ 翻译结果                            │
 │                                    │
 │                                    │
-│                         [🔊] [复制] │
+│                    [🔊] [收藏] [复制] │
 ├────────────────────────────────────┤
 │ 历史                     收藏       │
 └────────────────────────────────────┘
@@ -1416,7 +1418,8 @@ V0.1 最简单可靠方案：
 建议：
 
 ```text
-Ctrl + Enter => 翻译
+Enter => 翻译
+Shift + Enter => 换行
 ```
 
 是否输入即自动翻译：
@@ -1429,7 +1432,7 @@ V0.1 不做逐字符实时请求
 
 ```text
 粘贴后自动翻译
-或 Ctrl+Enter
+或 Enter
 ```
 
 实现优先稳定，不做复杂输入法判断。
@@ -1471,10 +1474,28 @@ speechSynthesis.speak(
 );
 ```
 
-发音语言按当前源语言确定：
+原文和译文使用不同的播放入口：
+
+```text
+原文区域 [播放原文] → 输入文本 + 源语言
+译文区域 [播放译文] → 翻译结果 + 目标语言
+```
+
+发音语言规则：
+
+- 手动源语言：使用当前源语言；
+- 自动检测源语言：使用已完成检测的语言；检测未完成或检测失败时禁用原文按钮；
+- 译文：使用当前目标语言。
+
+统一播放函数：
 
 ```ts
-utterance.lang = languageSpeechLocale(sourceLanguage);
+function speakText(text: string, language: SupportedLanguage): void {
+  speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = languageSpeechLocale(language);
+  speechSynthesis.speak(utterance);
+}
 ```
 
 停止：
@@ -1487,9 +1508,10 @@ V0.1 不下载音频。
 
 ---
 
-# 39. 文本类型分类
+# 39. 文本类型辅助规则
 
-V0.1 虽然所有翻译仍走 Chrome Translator，但 UI 可区分：
+V0.1 虽然所有翻译仍走 Chrome Translator，工程保留文本类型辅助规则，
+但当前翻译窗口不再显示类型标签：
 
 ```text
 word
@@ -1518,7 +1540,7 @@ export function classifyText(text: string) {
 }
 ```
 
-此分类当前只用于 UI 标签，不用于决定语言，也不代表已实现词典能力。
+此分类不用于决定语言，也不代表已实现词典能力；当前界面不展示该分类结果。
 
 ---
 
@@ -1545,7 +1567,7 @@ ko -> zh
 
 - 手动选择源语言和目标语言；
 - 自动检测源语言；
-- 源语言默认是 `auto` 自动检测，目标语言默认是中文（`zh`）；
+- 源语言默认是 `auto` 自动检测，目标语言默认跟随已保存的界面显示语言（初始默认中文 `zh`）；日本語/한국어界面暂回退为 `zh` 目标，不新增翻译语言对；
 - 自动检测只解析源语言，不自动修改用户选择的目标语言；
 - 仅允许当前支持的语言对，禁止相同语言互译或未定义语言对。
 
@@ -1607,16 +1629,23 @@ V0.1 设置项尽量少：
 
 历史
   [清空历史]
+  列表项支持单独删除
 
 缓存
   [清空翻译缓存]
 
 收藏
   [清空收藏]
+  列表项支持单独删除
 
 快捷键
   打开 chrome://extensions/shortcuts
 ```
+
+界面语言在独立翻译窗口顶部下拉框切换，支持中文、English、日本語和한국어，
+并保存到 `translatorSettings.displayLanguage`。中文和 English 会分别作为对应的
+默认目标语言；日本語和 한국어 目前只改变界面文本，默认目标语言回退为简体中文，
+不因此扩展新的翻译语言对。
 
 不要加入第三方 API 或 Provider 设置。
 
@@ -1794,13 +1823,12 @@ I'm not sure what you mean.
 
 - [ ] 普通网页选中文本出现 `[译]`；
 - [ ] 空 selection 不显示；
-- [ ] 点击 `[译]` 正确翻译；
-- [ ] Popover 不受网页 CSS 明显污染；
-- [ ] 点击复制成功；
-- [ ] 点击“打开”将文本送到独立窗口；
+- [ ] 点击 `[译]` 打开或聚焦独立翻译窗口；
+- [ ] 选中文本自动进入独立窗口输入区；
+- [ ] 独立窗口自动检测源语言并发起翻译；
 - [ ] Esc 关闭；
-- [ ] scroll 后浮层不会残留在错误位置；
-- [ ] 超长文本不会直接翻译。
+- [ ] scroll 后 Trigger 不会残留在错误位置；
+- [ ] 超长文本不会直接翻译，并显示短文本限制提示。
 
 ## 48.4 右键
 
@@ -1813,9 +1841,19 @@ I'm not sure what you mean.
 
 - [ ] 历史持久化；
 - [ ] 收藏持久化；
+- [ ] 单条历史和收藏删除有效；
 - [ ] 缓存持久化；
 - [ ] 清空操作有效；
 - [ ] 浏览器重启后数据仍在。
+
+## 48.6 发音
+
+- [ ] 原文区域可以播放输入文本；
+- [ ] 原文播放使用手动源语言或已完成的自动检测语言；
+- [ ] 自动检测未完成或失败时，原文播放按钮不可用；
+- [ ] 译文区域可以播放翻译结果；
+- [ ] 译文播放使用当前目标语言；
+- [ ] 播放新内容会先停止上一段语音。
 
 ---
 
@@ -1900,7 +1938,8 @@ This API has been deprecated.
 结果
 取消
 复制
-发音
+播放原文
+播放译文
 ```
 
 ---
@@ -1919,21 +1958,19 @@ favorites
 
 ## Phase 6：Content Script 划词
 
-先完成：
+完成：
 
 ```text
 Selection
 ↓
 [译]
-```
-
-再实现：
-
-```text
-Popover
 ↓
-Translator
+TRANSLATE_IN_WINDOW
+↓
+Translator Window
 ```
+
+网页侧不默认创建翻译 Popover；翻译状态和结果统一在独立窗口中处理。
 
 ---
 
@@ -2006,7 +2043,7 @@ pnpm build
 pnpm zip
 ```
 
-实际以 `package.json` scripts 为准；当前工程未配置独立的 `lint` script。
+实际以 `package.json` scripts 为准；当前工程已配置 `pnpm lint`，执行前需确保本地开发依赖完整。
 
 ---
 
@@ -2143,7 +2180,8 @@ Translator Window / Content Script
 │  │     ↓            │       │      ↓              │  │
 │  │   [译]           │       │ Translation UI      │  │
 │  │     ↓            │       │                     │  │
-│  │ Popover          │       └──────────┬──────────┘  │
+│  │ TRANSLATE_IN_   │       └──────────┬──────────┘  │
+│  │ WINDOW          │                  │             │
 │  └──────┬───────────┘                  │             │
 │         │                              │             │
 │         └─────────────┬────────────────┘             │
@@ -2195,10 +2233,10 @@ Translator Window / Content Script
 6. 能使用 Chrome Translator API 完成当前支持的语言对翻译（`en ↔ zh`、`ja → zh`、`ko → zh`）；
 7. 支持手动选择源语言以及自动语言识别；
 8. 首次模型准备过程用户可感知；
-9. 独立窗口可输入、翻译、复制、发音；
+9. 独立窗口可输入、翻译、复制，并分别播放原文和译文；
 10. 网页选中文字可以点击 `[译]` 翻译；
-11. 网页翻译 Popover 可正常关闭；
-12. 可以将划词内容发送到独立窗口；
+11. 网页划词可以打开/聚焦独立窗口，并自动检测源语言；
+12. 独立窗口目标语言跟随已保存的界面语言；日语/韩语界面因当前翻译能力限制回退为简体中文；
 13. 右键翻译有效；
 14. 历史记录有效；
 15. 收藏有效；
