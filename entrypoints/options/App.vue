@@ -5,19 +5,24 @@ import {
   type DisplayLanguage,
 } from '../../core/i18n/ui';
 import {
-  DEFAULT_SETTINGS,
-  loadSettings,
   saveSettings,
   type Settings,
 } from '../../core/storage/settings';
 import { IndexedDbCacheRepository } from '../../core/storage/cache-repository';
 import { IndexedDbFavoriteRepository } from '../../core/storage/favorite-repository';
 import { IndexedDbHistoryRepository } from '../../core/storage/history-repository';
-import { languageHtmlLocale } from '../../core/translator/languages';
+import {
+  isRtlDisplayLanguage,
+  languageHtmlLocale,
+} from '../../core/translator/languages';
 
-const settings = ref<Settings>(DEFAULT_SETTINGS);
+const props = defineProps<{
+  initialSettings: Settings;
+}>();
+
+const settings = ref<Settings>(props.initialSettings);
 const statusMessage = ref('');
-const displayLanguage = ref<DisplayLanguage>('zh');
+const displayLanguage = ref<DisplayLanguage>(props.initialSettings.displayLanguage);
 const ui = computed(() => getUiCopy(displayLanguage.value));
 const cacheRepository = new IndexedDbCacheRepository();
 const historyRepository = new IndexedDbHistoryRepository();
@@ -65,15 +70,12 @@ function openShortcuts(): void {
 
 function applyDisplayLanguage(language: DisplayLanguage): void {
   document.documentElement.lang = languageHtmlLocale(language);
+  document.documentElement.dir = isRtlDisplayLanguage(language) ? 'rtl' : 'ltr';
 }
 
 onMounted(() => {
-  void loadSettings().then((loadedSettings) => {
-    settings.value = loadedSettings;
-    displayLanguage.value = loadedSettings.displayLanguage;
-    applyDisplayLanguage(loadedSettings.displayLanguage);
-    applyTheme(loadedSettings.theme);
-  });
+  applyDisplayLanguage(settings.value.displayLanguage);
+  applyTheme(settings.value.theme);
 });
 </script>
 

@@ -151,8 +151,56 @@ export function isSupportedLanguage(value: string): value is SupportedLanguage {
   return LANGUAGE_BY_CODE.has(value as SupportedLanguage);
 }
 
-export function isInterfaceLanguage(value: string): value is DisplayLanguage {
-  return isSupportedLanguage(value);
+export function isInterfaceLanguage(value: unknown): value is DisplayLanguage {
+  return typeof value === 'string' && isSupportedLanguage(value);
+}
+
+const BROWSER_LOCALE_OVERRIDES: Record<string, DisplayLanguage> = {
+  'zh-hant': 'zh-Hant',
+  'zh-tw': 'zh-Hant',
+  'zh-hk': 'zh-Hant',
+  'zh-mo': 'zh-Hant',
+};
+
+const BROWSER_LANGUAGE_ALIASES: Record<string, DisplayLanguage> = {
+  iw: 'he',
+  nb: 'no',
+};
+
+const RTL_DISPLAY_LANGUAGES = new Set<DisplayLanguage>(['ar', 'he']);
+
+export function displayLanguageFromLocale(
+  locale: unknown,
+): DisplayLanguage | null {
+  if (typeof locale !== 'string') {
+    return null;
+  }
+
+  const normalizedLocale = locale.trim().replaceAll('_', '-').toLowerCase();
+  if (!normalizedLocale) {
+    return null;
+  }
+
+  const override = BROWSER_LOCALE_OVERRIDES[normalizedLocale];
+  if (override) {
+    return override;
+  }
+
+  const primaryLanguage = normalizedLocale.split('-')[0];
+  if (!primaryLanguage) {
+    return null;
+  }
+
+  const alias = BROWSER_LANGUAGE_ALIASES[primaryLanguage];
+  if (alias) {
+    return alias;
+  }
+
+  const language = SUPPORTED_LANGUAGES.find(
+    (definition) => definition.code.toLowerCase() === primaryLanguage,
+  );
+
+  return language?.code ?? null;
 }
 
 export function languageLabel(
@@ -188,6 +236,10 @@ export function languageHtmlLocale(language: DisplayLanguage): string {
   return DISPLAY_NAME_LOCALE[language];
 }
 
+export function isRtlDisplayLanguage(language: DisplayLanguage): boolean {
+  return RTL_DISPLAY_LANGUAGES.has(language);
+}
+
 export function getDefaultTargetLanguage(
   sourceLanguage: SourceLanguage,
 ): TargetLanguage {
@@ -200,6 +252,18 @@ export function getDefaultTargetLanguage(
   }
 
   return 'zh';
+}
+
+export function resolveTargetLanguageForSource(
+  sourceLanguage: SourceLanguage,
+  targetLanguage: TargetLanguage,
+  targetLanguageManuallySelected: boolean,
+): TargetLanguage {
+  if (targetLanguageManuallySelected || sourceLanguage !== targetLanguage) {
+    return targetLanguage;
+  }
+
+  return getDefaultTargetLanguage(sourceLanguage);
 }
 
 export function isSupportedTranslationPair(

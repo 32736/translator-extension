@@ -1,5 +1,13 @@
 import { createApp } from 'vue';
 import App from './App.vue';
 import './style.css';
+import { loadSettings } from '../../core/storage/settings';
+import { loadUiCopy } from '../../core/i18n/ui';
 
-createApp(App).mount('#app');
+async function mountTranslator(): Promise<void> {
+  const settings = await loadSettings();
+  await loadUiCopy(settings.displayLanguage);
+  createApp(App, { initialSettings: settings }).mount('#app');
+}
+
+void mountTranslator();

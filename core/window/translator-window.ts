@@ -9,6 +9,10 @@ export interface TranslatorWindowState {
 const WINDOW_STATE_KEY = 'translatorWindow';
 const DEFAULT_BOUNDS = {
   width: 440,
+  height: 760,
+} as const;
+const LEGACY_DEFAULT_BOUNDS = {
+  width: 440,
   height: 680,
 } as const;
 const BOUNDS_SAVE_DEBOUNCE_MS = 300;
@@ -52,6 +56,22 @@ export async function clearTranslatorWindowId(): Promise<void> {
   const { windowId: _windowId, ...bounds } = state;
 
   await saveTranslatorWindowState(bounds);
+}
+
+function migrateDefaultBounds(state: TranslatorWindowState): TranslatorWindowState {
+  const usesLegacyDefaultHeight = state.height === LEGACY_DEFAULT_BOUNDS.height;
+  const usesLegacyDefaultWidth =
+    state.width === undefined || state.width === LEGACY_DEFAULT_BOUNDS.width;
+
+  if (!usesLegacyDefaultHeight || !usesLegacyDefaultWidth) {
+    return state;
+  }
+
+  return {
+    ...state,
+    width: state.width ?? DEFAULT_BOUNDS.width,
+    height: DEFAULT_BOUNDS.height,
+  };
 }
 
 async function saveWindowBounds(windowId: number): Promise<void> {
@@ -139,7 +159,7 @@ async function createTranslatorWindow(
 }
 
 async function ensureTranslatorWindowInternal(): Promise<number> {
-  const state = await loadTranslatorWindowState();
+  const state = migrateDefaultBounds(await loadTranslatorWindowState());
 
   if (state.windowId !== undefined) {
     try {

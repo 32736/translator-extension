@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { classifyText, containsMostlyChinese } from '../core/language/classify';
 import {
+  displayLanguageFromLocale,
   getTargetLanguages,
   isInterfaceLanguage,
+  isRtlDisplayLanguage,
+  resolveTargetLanguageForSource,
   SUPPORTED_LANGUAGES,
 } from '../core/translator/languages';
 
@@ -76,5 +79,30 @@ describe('text classification', () => {
     expect(
       SUPPORTED_LANGUAGES.every((language) => language.nativeLabel.length > 0),
     ).toBe(true);
+  });
+
+  it('maps browser locales to the shared display language catalog', () => {
+    expect(displayLanguageFromLocale('en-US')).toBe('en');
+    expect(displayLanguageFromLocale('zh-CN')).toBe('zh');
+    expect(displayLanguageFromLocale('zh-TW')).toBe('zh-Hant');
+    expect(displayLanguageFromLocale('zh_HK')).toBe('zh-Hant');
+    expect(displayLanguageFromLocale('pt-BR')).toBe('pt');
+    expect(displayLanguageFromLocale('nb-NO')).toBe('no');
+    expect(displayLanguageFromLocale('unsupported-Language')).toBeNull();
+  });
+
+  it('identifies the RTL interface languages', () => {
+    expect(isRtlDisplayLanguage('ar')).toBe(true);
+    expect(isRtlDisplayLanguage('he')).toBe(true);
+    expect(isRtlDisplayLanguage('en')).toBe(false);
+    expect(isRtlDisplayLanguage('zh')).toBe(false);
+  });
+
+  it('avoids the default source and target language collision', () => {
+    expect(resolveTargetLanguageForSource('en', 'en', false)).toBe('zh');
+    expect(resolveTargetLanguageForSource('zh', 'zh', false)).toBe('en');
+    expect(resolveTargetLanguageForSource('ja', 'ja', false)).toBe('zh');
+    expect(resolveTargetLanguageForSource('en', 'en', true)).toBe('en');
+    expect(resolveTargetLanguageForSource('en', 'zh', false)).toBe('zh');
   });
 });

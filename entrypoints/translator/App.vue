@@ -21,11 +21,12 @@ import {
   getUiCopy,
   isDisplayLanguage,
   languageLabelForDisplay,
+  loadUiCopy,
   type DisplayLanguage,
 } from '../../core/i18n/ui';
 import {
+  DEFAULT_SETTINGS,
   isSettings,
-  loadSettings,
   saveSettings,
   SETTINGS_KEY,
   type Settings,
@@ -36,8 +37,10 @@ import {
 import {
   isSupportedLanguage,
   isSupportedTranslationPair,
+  isRtlDisplayLanguage,
   languageHtmlLocale,
   languageSpeechLocale,
+  resolveTargetLanguageForSource,
   SUPPORTED_LANGUAGES,
 } from '../../core/translator/languages';
 import { ChromeTranslatorProvider } from '../../core/translator/chrome-translator-provider';
@@ -65,13 +68,17 @@ type TranslationStatus =
 
 type SavedTab = 'history' | 'favorites';
 
+const props = defineProps<{
+  initialSettings: Settings;
+}>();
+
 const inputText = ref('');
 const sourceText = ref('');
 const translatedText = ref('');
 const status = ref<TranslationStatus>('idle');
 const progress = ref(0);
 const errorMessage = ref('');
-const displayLanguage = ref<DisplayLanguage>('zh');
+const displayLanguage = ref<DisplayLanguage>(props.initialSettings.displayLanguage);
 const ui = computed(() => getUiCopy(displayLanguage.value));
 const preparingState = ref<'translation' | 'language-detection'>('translation');
 const preparingLabel = computed(() =>
@@ -97,7 +104,8 @@ const historyItems = ref<HistoryEntity[]>([]);
 const favoriteItems = ref<FavoriteEntity[]>([]);
 const languageCandidates = ref<SupportedLanguage[]>([]);
 const sourceLanguage = ref<SourceLanguage | 'auto'>('auto');
-const targetLanguage = ref<TargetLanguage>('zh');
+const targetLanguage = ref<TargetLanguage>(props.initialSettings.displayLanguage);
+const targetLanguageManuallySelected = ref(false);
 const detectedLanguage = ref<SourceLanguage | null>(null);
 const supportedLanguages = SUPPORTED_LANGUAGES;
 const displayLanguages = SUPPORTED_LANGUAGES;
@@ -123,9 +131,8 @@ const canSpeakSource = computed(
     status.value !== 'translating',
 );
 const settings = ref<Settings>({
-  theme: 'system',
-  selectionEnabled: true,
-  displayLanguage: 'zh',
+  ...DEFAULT_SETTINGS,
+  ...props.initialSettings,
 });
 const activeSavedItems = computed(() =>
   activeSavedTab.value === 'history'
@@ -233,6 +240,7 @@ function setTargetLanguage(value: string): void {
   }
 
   targetLanguage.value = value;
+  targetLanguageManuallySelected.value = true;
   detectedLanguage.value = null;
   clearTranslationState();
 }
@@ -249,6 +257,7 @@ function swapLanguages(): void {
 
   sourceLanguage.value = targetLanguage.value;
   targetLanguage.value = previousSource;
+  targetLanguageManuallySelected.value = true;
   detectedLanguage.value = null;
   clearTranslationState();
 }
@@ -263,6 +272,7 @@ function applyTheme(theme: Settings['theme']): void {
 
 function applyDisplayLanguage(language: DisplayLanguage): void {
   document.documentElement.lang = languageHtmlLocale(language);
+  document.documentElement.dir = isRtlDisplayLanguage(language) ? 'rtl' : 'ltr';
 }
 
 function getTargetLanguageForDisplay(
@@ -280,6 +290,7 @@ async function setDisplayLanguage(language: DisplayLanguage): Promise<void> {
     return;
   }
 
+  await loadUiCopy(language);
   const savedSettings = await saveSettings({ displayLanguage: language });
   settings.value = savedSettings;
   displayLanguage.value = savedSettings.displayLanguage;
@@ -287,6 +298,7 @@ async function setDisplayLanguage(language: DisplayLanguage): Promise<void> {
   targetLanguage.value = getTargetLanguageForDisplay(
     savedSettings.displayLanguage,
   );
+  targetLanguageManuallySelected.value = false;
   clearTranslationState();
 }
 
@@ -339,10 +351,10 @@ function getLocalizedErrorMessage(error: unknown): string {
   }
 }
 
-function handleSettingsChanged(
+async function handleSettingsChanged(
   changes: { [key: string]: chrome.storage.StorageChange },
   areaName: string,
-): void {
+): Promise<void> {
   if (areaName !== 'sync') {
     return;
   }
@@ -350,6 +362,7 @@ function handleSettingsChanged(
   const value: unknown = changes[SETTINGS_KEY]?.newValue;
 
   if (isSettings(value)) {
+    await loadUiCopy(value.displayLanguage);
     const displayLanguageChanged =
       displayLanguage.value !== value.displayLanguage;
     settings.value = value;
@@ -359,6 +372,7 @@ function handleSettingsChanged(
       displayLanguage.value = value.displayLanguage;
       applyDisplayLanguage(value.displayLanguage);
       targetLanguage.value = getTargetLanguageForDisplay(value.displayLanguage);
+      targetLanguageManuallySelected.value = false;
       clearTranslationState();
     }
   }
@@ -441,10 +455,20 @@ async function translate(source: TranslationSource = 'window'): Promise<void> {
 
       detectedLanguage.value = detection.language;
       resolvedSourceLanguage = detection.language;
-      resolvedTargetLanguage = targetLanguage.value;
+      resolvedTargetLanguage = resolveTargetLanguageForSource(
+        resolvedSourceLanguage,
+        targetLanguage.value,
+        targetLanguageManuallySelected.value,
+      );
+      targetLanguage.value = resolvedTargetLanguage;
     } else {
       resolvedSourceLanguage = sourceLanguage.value;
-      resolvedTargetLanguage = targetLanguage.value;
+      resolvedTargetLanguage = resolveTargetLanguageForSource(
+        resolvedSourceLanguage,
+        targetLanguage.value,
+        targetLanguageManuallySelected.value,
+      );
+      targetLanguage.value = resolvedTargetLanguage;
     }
 
     preparingState.value = 'translation';
@@ -615,7 +639,9 @@ function selectSavedItem(item: {
   requestSequence += 1;
   inputText.value = item.sourceText;
   sourceLanguage.value = item.sourceLanguage ?? 'auto';
-  targetLanguage.value = item.targetLanguage ?? 'zh';
+  targetLanguage.value =
+    item.targetLanguage ?? getTargetLanguageForDisplay(displayLanguage.value);
+  targetLanguageManuallySelected.value = item.targetLanguage !== undefined;
   detectedLanguage.value = null;
   sourceText.value = item.sourceText;
   translatedText.value = item.translatedText;
@@ -686,15 +712,8 @@ onBeforeUnmount(() => {
 onMounted(() => {
   chrome.runtime.onMessage.addListener(handleRuntimeMessage);
   chrome.storage.onChanged.addListener(handleSettingsChanged);
-  void loadSettings().then((loadedSettings) => {
-    settings.value = loadedSettings;
-    displayLanguage.value = loadedSettings.displayLanguage;
-    applyDisplayLanguage(loadedSettings.displayLanguage);
-    targetLanguage.value = getTargetLanguageForDisplay(
-      loadedSettings.displayLanguage,
-    );
-    applyTheme(loadedSettings.theme);
-  });
+  applyDisplayLanguage(settings.value.displayLanguage);
+  applyTheme(settings.value.theme);
   void refreshSavedData();
   const readyMessage: RuntimeMessage = { type: 'TRANSLATOR_WINDOW_READY' };
   void chrome.runtime.sendMessage(readyMessage).catch(() => {

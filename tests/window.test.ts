@@ -80,6 +80,21 @@ describe('translator window management', () => {
     });
   });
 
+  it('migrates the previous default height when recreating the window', async () => {
+    state = { width: 440, height: 680 };
+    chromeMock.windows.create.mockResolvedValue({ id: 99 });
+
+    await expect(ensureTranslatorWindow()).resolves.toBe(99);
+
+    expect(chromeMock.windows.create).toHaveBeenCalledWith({
+      url: 'chrome-extension://test/translator.html',
+      type: 'popup',
+      focused: true,
+      width: 440,
+      height: 760,
+    });
+  });
+
   it('shares one creation promise for concurrent opens', async () => {
     let resolveCreate: ((value: { id: number }) => void) | undefined;
     chromeMock.windows.create.mockReturnValue(

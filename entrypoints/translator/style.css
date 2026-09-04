@@ -1,5 +1,8 @@
 :root {
   font-size: 14px;
+  --shell-max-width: 560px;
+  --shell-inline-padding: clamp(12px, 3vw, 24px);
+  --shell-block-padding: clamp(8px, 2dvh, 12px);
   color-scheme: dark;
   --gap: 1rem;
   --gap-2xs: calc(var(--gap) * 0.125);
@@ -80,9 +83,10 @@ body,
 }
 
 body {
-  min-width: 360px;
+  min-width: 320px;
   min-height: 100dvh;
   overflow-x: hidden;
+  overflow-y: auto;
   background: var(--bg-app);
   color: var(--text-primary);
   font-size: 1rem;
@@ -128,28 +132,31 @@ textarea:focus-visible {
 .translator-shell {
   display: flex;
   width: 100%;
-  max-width: 440px;
+  max-width: var(--shell-max-width);
   height: 100dvh;
   min-height: 100dvh;
   margin: 0 auto;
   flex-direction: column;
-  gap: var(--gap);
-  overflow: hidden;
-  padding: var(--gap-lg) var(--gap-lg) var(--gap-xl);
+  gap: clamp(8px, 1.5dvh, 12px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--shell-block-padding) var(--shell-inline-padding) clamp(16px, 4dvh, 24px);
   background: var(--bg-app);
   color: var(--text-primary);
 }
 
 .translator-header {
   display: flex;
-  min-height: 40px;
+  min-height: 34px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--gap-xs);
 }
 
 .display-language-select {
-  min-width: 96px;
+  width: auto;
+  min-width: min(96px, calc(100% - 42px));
+  max-width: 70%;
+  min-height: 28px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-control);
   background: var(--surface-secondary);
@@ -185,8 +192,8 @@ h1 {
 
 .settings-button {
   display: inline-grid;
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   place-items: center;
   border: 0;
   border-radius: var(--radius-control);
@@ -204,8 +211,9 @@ h1 {
 }
 
 .language-switcher {
-  display: flex;
-  min-height: 36px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+  min-height: 34px;
   align-items: center;
   gap: var(--gap-xs);
   border: 1px solid var(--border-subtle);
@@ -216,23 +224,28 @@ h1 {
 
 .language-side {
   display: flex;
-  flex: 1 1 0;
+  grid-column: 1;
   min-width: 0;
   height: 100%;
   align-items: center;
-  gap: var(--gap-sm);
+  gap: clamp(4px, 1vw, 8px);
 }
 
 .language-side-target {
+  grid-column: 3;
   justify-content: flex-end;
 }
 
 .language-caption {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
   color: var(--text-tertiary);
   font-size: 0.75rem;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   padding: 0 var(--gap-sm);
 }
 
@@ -260,14 +273,14 @@ h1 {
 }
 
 .language-side-target .language-select {
-  text-align: left;
+  text-align: start;
 }
 
 .language-swap {
   display: inline-grid;
-  flex: 0 0 28px;
-  width: 28px;
-  height: 28px;
+  grid-column: 2;
+  width: 100%;
+  height: 24px;
   place-items: center;
   border: 0;
   border-radius: var(--radius-control);
@@ -309,15 +322,15 @@ h1 {
 }
 
 .input-panel {
-  padding: var(--gap-lg) var(--gap-lg) var(--gap-md);
+  padding: clamp(12px, 3vw, 16px) clamp(12px, 3vw, 16px) var(--gap-md);
 }
 
 .result-panel {
   flex: 1 1 auto;
-  min-height: 120px;
+  min-height: clamp(120px, 24dvh, 280px);
   overflow: auto;
   border-top: 1px solid var(--border-subtle);
-  padding: var(--gap-lg) var(--gap-lg) var(--gap-lg);
+  padding: clamp(12px, 3vw, 16px);
 }
 
 .field-heading,
@@ -365,11 +378,11 @@ h1 {
 
 textarea {
   width: 100%;
-  min-height: 96px;
+  min-height: clamp(80px, 14dvh, 132px);
   resize: none;
   background: transparent;
   color: var(--text-primary);
-  margin: var(--gap-md) 0;
+  margin: clamp(8px, 2dvh, 12px) 0;
   border: 1px solid transparent;
   border-radius: var(--radius-control);
   padding: var(--gap-md);
@@ -431,7 +444,7 @@ textarea::placeholder {
 
 .result-content {
   display: flex;
-  min-height: 90px;
+  min-height: clamp(72px, 12dvh, 160px);
   flex: 1;
   flex-direction: column;
   justify-content: flex-start;
@@ -439,6 +452,8 @@ textarea::placeholder {
 
 .translated-text {
   padding-top: var(--gap-md);
+  overflow-wrap: anywhere;
+  word-break: break-word;
   white-space: pre-wrap;
   color: var(--text-primary);
   font-size: 1rem;
@@ -507,7 +522,7 @@ textarea::placeholder {
 
 .result-actions > .text-button,
 .result-actions > .secondary-button {
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .action-button {
@@ -537,7 +552,7 @@ textarea::placeholder {
 .saved-section {
   display: flex;
   flex: 1 1 auto;
-  min-height: 168px;
+  min-height: clamp(128px, 24dvh, 240px);
   flex-direction: column;
   padding: var(--gap-2xs) var(--gap-xs) 0;
 }
@@ -612,6 +627,7 @@ textarea::placeholder {
   flex-direction: column;
   gap: var(--gap-2xs);
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 0;
   list-style: none;
 }
@@ -642,7 +658,7 @@ textarea::placeholder {
   background: transparent;
   color: var(--text-primary);
   padding: var(--gap-sm);
-  text-align: left;
+  text-align: start;
   transition: background 150ms ease-out, color 150ms ease-out;
 }
 
@@ -714,12 +730,62 @@ textarea::placeholder {
 
 @media (max-width: 380px) {
   .translator-shell {
-    padding-right: var(--gap-lg);
-    padding-left: var(--gap-lg);
+    gap: var(--gap-sm);
+  }
+
+  .language-switcher {
+    grid-template-columns: minmax(0, 1fr) 24px minmax(0, 1fr);
   }
 
   .language-caption {
     display: none;
+  }
+
+  .language-select {
+    font-size: 0.8125rem;
+  }
+
+  .input-panel,
+  .result-panel {
+    padding-inline: 12px;
+  }
+}
+
+@media (max-height: 640px) {
+  .translator-shell {
+    gap: var(--gap-sm);
+    padding-top: 12px;
+    padding-bottom: 16px;
+  }
+
+  .translator-header {
+    min-height: 36px;
+  }
+
+  textarea {
+    min-height: 72px;
+  }
+
+  .result-panel {
+    min-height: 104px;
+  }
+
+  .result-content {
+    min-height: 64px;
+  }
+
+  .saved-section {
+    min-height: 108px;
+  }
+}
+
+@media (min-height: 850px) {
+  .result-panel {
+    min-height: clamp(180px, 28dvh, 320px);
+  }
+
+  .saved-section {
+    min-height: clamp(168px, 24dvh, 280px);
   }
 }
 

@@ -140,7 +140,7 @@ V0.1 的独立窗口、网页划词、右键菜单、历史、收藏、缓存、
 - 快捷键 `Ctrl + Shift + L` 打开独立窗口；
 - 窗口单实例；
 - 已存在时聚焦；
-- 默认尺寸约 `460 x 680`；
+- 默认尺寸约 `440 x 760`；
 - 保存窗口的：
   - left
   - top
@@ -803,7 +803,7 @@ core/window/translator-window.ts
 ```ts
 const DEFAULT_BOUNDS = {
   width: 440,
-  height: 680,
+  height: 760,
 };
 ```
 
@@ -836,7 +836,7 @@ export async function ensureTranslatorWindow(): Promise<number> {
     type: 'popup',
     focused: true,
     width: state.width ?? 440,
-    height: state.height ?? 680,
+    height: state.height ?? 760,
     left: state.left,
     top: state.top,
   });
@@ -1568,7 +1568,8 @@ Chrome `Translator.availability()` 是语言对和本地模型可用性的最终
 
 - 手动选择源语言和目标语言；
 - 自动检测源语言；
-- 源语言默认是 `auto` 自动检测，目标语言默认跟随已保存的界面显示语言（初始默认中文 `zh`）；
+- 源语言默认是 `auto` 自动检测，目标语言默认跟随已保存的界面显示语言；首次没有保存设置时，优先使用浏览器 UI 语言；如果该语言不在支持目录中，则按浏览器首选语言列表顺序选择第一个支持的语言，全部不支持时回退到中文 `zh`；
+- 当目标语言仍是默认值且自动识别出的源语言与目标语言相同时，自动切换到可用的备用目标语言；用户手动选择过目标语言时保留用户选择并显示同语言提示；
 - 自动检测只解析源语言，不自动修改用户选择的目标语言；
 - 仅允许目录中的语言，禁止相同语言互译；具体语言对可用性由 Chrome 运行时检查。
 
@@ -1583,6 +1584,8 @@ Chrome `Translator.availability()` 是语言对和本地模型可用性的最终
 - Chrome Language Detector 不可用或没有候选时，保留原文并要求手动选择源语言。
 
 网页划词默认交给独立窗口自动检测语言。
+
+界面方向随界面语言设置：阿拉伯语 `ar` 和希伯来语 `he` 使用 RTL，其他当前支持的界面语言使用 LTR；布局中的文本对齐使用逻辑方向，避免切换语言后出现固定左对齐。
 
 ---
 

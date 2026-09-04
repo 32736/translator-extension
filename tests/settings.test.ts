@@ -57,4 +57,46 @@ describe('settings display language', () => {
       displayLanguage: 'en',
     });
   });
+
+  it('uses the browser UI language when no display language is saved', async () => {
+    vi.stubGlobal('chrome', {
+      i18n: {
+        getUILanguage: vi.fn(() => 'ja-JP'),
+      },
+      storage: {
+        sync: {
+          get: vi.fn(async () => ({
+            translatorSettings: undefined,
+          })),
+        },
+      },
+    });
+
+    await expect(loadSettings()).resolves.toMatchObject({
+      displayLanguage: 'ja',
+    });
+  });
+
+  it('uses the first supported browser preferred language when the UI locale is unsupported', async () => {
+    const getAcceptLanguages = vi.fn(async () => ['ca-ES', 'de-DE', 'en-US']);
+
+    vi.stubGlobal('chrome', {
+      i18n: {
+        getUILanguage: vi.fn(() => 'ca-ES'),
+        getAcceptLanguages,
+      },
+      storage: {
+        sync: {
+          get: vi.fn(async () => ({
+            translatorSettings: undefined,
+          })),
+        },
+      },
+    });
+
+    await expect(loadSettings()).resolves.toMatchObject({
+      displayLanguage: 'de',
+    });
+    expect(getAcceptLanguages).toHaveBeenCalledOnce();
+  });
 });
